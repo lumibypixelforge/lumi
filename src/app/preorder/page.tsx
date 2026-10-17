@@ -440,6 +440,71 @@ export default function PreorderPage() {
         throw new Error(data.error || 'Failed to initialize pre-order reservation.');
       }
 
+      // Check if real Razorpay gateway is active
+      const isRazorpayActive = Boolean(
+        data.clientConfig?.publicKeyId &&
+        !data.clientConfig.publicKeyId.includes('mock') &&
+        !data.gatewayOrderId?.includes('mock')
+      );
+
+      if (isRazorpayActive) {
+        const loadRazorpayScript = () => {
+          return new Promise<boolean>((resolve) => {
+            if (typeof window !== 'undefined' && (window as unknown as { Razorpay?: unknown }).Razorpay) {
+              resolve(true);
+              return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+            script.async = true;
+            script.onload = () => resolve(true);
+            script.onerror = () => resolve(false);
+            document.body.appendChild(script);
+          });
+        };
+
+        const loaded = await loadRazorpayScript();
+        if (!loaded) {
+          throw new Error('Razorpay checkout failed to load. Please check your internet connection.');
+        }
+
+        const options = {
+          key: data.clientConfig.publicKeyId,
+          amount: data.amountPaise,
+          currency: data.currency || 'INR',
+          name: 'LUMI',
+          description: `Pre-Order Deposit (${data.orderNumber})`,
+          order_id: data.gatewayOrderId,
+          prefill: {
+            name: formData.fullName,
+            email: formData.email,
+            contact: formData.phone,
+          },
+          theme: {
+            color: '#6D4AE0',
+          },
+          handler: function (res: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) {
+            handlePaymentSuccess(
+              res.razorpay_payment_id,
+              res.razorpay_signature,
+              data.orderId,
+              data.gatewayOrderId,
+              data.orderNumber,
+              data.amountPaise
+            );
+          },
+          modal: {
+            ondismiss: function () {
+              setIsSubmitting(false);
+            },
+          },
+        };
+
+        const rzp = new (window as unknown as { Razorpay: new (opts: typeof options) => { open: () => void } }).Razorpay(options);
+        rzp.open();
+        return;
+      }
+
       setPaymentModalState({
         isOpen: true,
         orderId: data.orderId,
@@ -455,17 +520,29 @@ export default function PreorderPage() {
     }
   };
 
-  const handlePaymentSuccess = async (paymentId: string, signature: string) => {
+  const handlePaymentSuccess = async (
+    paymentId: string,
+    signature: string,
+    orderIdOverride?: string,
+    gatewayOrderIdOverride?: string,
+    orderNumberOverride?: string,
+    amountPaiseOverride?: number
+  ) => {
     setPaymentModalState((prev) => ({ ...prev, isOpen: false }));
     setIsSubmitting(true);
+
+    const orderId = orderIdOverride || paymentModalState.orderId;
+    const gatewayOrderId = gatewayOrderIdOverride || paymentModalState.gatewayOrderId;
+    const orderNumber = orderNumberOverride || paymentModalState.orderNumber;
+    const amountPaise = amountPaiseOverride || paymentModalState.amountPaise;
 
     try {
       const verifyRes = await fetch('/api/payments/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderId: paymentModalState.orderId,
-          gatewayOrderId: paymentModalState.gatewayOrderId,
+          orderId: orderId,
+          gatewayOrderId: gatewayOrderId,
           gatewayPaymentId: paymentId,
           signature: signature,
         }),
@@ -478,9 +555,9 @@ export default function PreorderPage() {
       }
 
       setConfirmedOrder({
-        orderId: paymentModalState.orderId,
-        orderNumber: verifyData.orderNumber || paymentModalState.orderNumber,
-        amountPaise: paymentModalState.amountPaise,
+        orderId: orderId,
+        orderNumber: verifyData.orderNumber || orderNumber,
+        amountPaise: amountPaise,
         paymentId: paymentId,
         email: formData.email,
         quantity: formData.quantity,

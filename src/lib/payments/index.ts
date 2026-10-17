@@ -7,30 +7,31 @@
 
 import type { PaymentProvider } from './types';
 import { MockPaymentProvider } from './mock-provider';
+import { RazorpayPaymentProvider } from './razorpay-provider';
 
 let providerInstance: PaymentProvider | null = null;
 
 export function getPaymentProvider(): PaymentProvider {
   if (providerInstance) return providerInstance;
 
-  const providerType = process.env.PAYMENT_PROVIDER ?? 'mock';
+  const hasRazorpayKeys = Boolean(
+    (process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) &&
+    process.env.RAZORPAY_KEY_SECRET
+  );
 
-  switch (providerType) {
-    case 'mock':
-      providerInstance = new MockPaymentProvider();
-      console.log('[Payments] Using MockPaymentProvider');
-      break;
+  const providerType = process.env.PAYMENT_PROVIDER ?? (hasRazorpayKeys ? 'razorpay' : 'mock');
 
-    case 'razorpay':
-      // TODO: Import and instantiate RazorpayPaymentProvider when account is ready
-      // const { RazorpayPaymentProvider } = require('./razorpay-provider');
-      // providerInstance = new RazorpayPaymentProvider();
-      throw new Error(
-        'Razorpay provider not yet implemented. Set PAYMENT_PROVIDER=mock for development.'
+  if (providerType === 'razorpay' && hasRazorpayKeys) {
+    providerInstance = new RazorpayPaymentProvider();
+    console.log('[Payments] Using RazorpayPaymentProvider');
+  } else {
+    if (providerType === 'razorpay' && !hasRazorpayKeys) {
+      console.warn(
+        '[Payments] PAYMENT_PROVIDER=razorpay requested but RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is missing. Falling back to MockPaymentProvider.'
       );
-
-    default:
-      throw new Error(`Unknown payment provider: ${providerType}`);
+    }
+    providerInstance = new MockPaymentProvider();
+    console.log('[Payments] Using MockPaymentProvider');
   }
 
   return providerInstance;
