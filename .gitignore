@@ -43,3 +43,5 @@ next-env.d.ts
 # local test artifacts
 scripts/admin_cookies.json
 test_*.png
+__pycache__/
+*.pyc

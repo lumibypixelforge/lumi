@@ -1,6 +1,7 @@
-import urllib.request
-import json
 import os
+import json
+import urllib.request
+import urllib.error
 
 def get_token():
     token = os.environ.get('SUPABASE_ACCESS_TOKEN', '')
@@ -26,20 +27,21 @@ def query(sql):
         print("HTTP Error:", e.code, e.read().decode())
         raise
 
-print("Audit log:")
-print(json.dumps(query('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 5;'), indent=2))
+if __name__ == '__main__':
+    print("Audit log:")
+    print(json.dumps(query('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 5;'), indent=2))
 
-print("\nPreorders:")
-print(json.dumps(query('SELECT * FROM preorders;'), indent=2))
+    print("\nPreorders:")
+    print(json.dumps(query('SELECT * FROM preorders;'), indent=2))
 
-print("\nPayments:")
-print(json.dumps(query('SELECT * FROM payments;'), indent=2))
+    print("\nPayments:")
+    print(json.dumps(query('SELECT * FROM payments;'), indent=2))
 
-print("\nTables:")
-print(json.dumps(query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';"), indent=2))
+    print("\nTables:")
+    print(json.dumps(query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';"), indent=2))
 
-print("\nProfiles:")
-print(json.dumps(query('SELECT id, email, full_name FROM profiles;'), indent=2))
+    print("\nProfiles:")
+    print(json.dumps(query('SELECT id, email, full_name FROM profiles;'), indent=2))
 
-print("\nAuth Users:")
-print(json.dumps(query('SELECT id, email FROM auth.users;'), indent=2))
+    print("\nAuth Users:")
+    print(json.dumps(query('SELECT id, email FROM auth.users;'), indent=2))
