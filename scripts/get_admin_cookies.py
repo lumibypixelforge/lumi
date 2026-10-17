@@ -34,7 +34,7 @@ opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 # 1. Login
 login_url = "http://localhost:3000/api/admin/auth/login"
 data = json.dumps({
-    "email": "ritikrajmandal8@gmail.com",
+    "email": "lumibypixelforge@gmail.com",
     "password": "AdminPassword123!"
 }).encode()
 
@@ -53,7 +53,7 @@ verify_url = "http://localhost:3000/api/admin/auth/verify-mfa"
 vdata = json.dumps({
     "factorId": factor_id,
     "code": totp_code,
-    "email": "ritikrajmandal8@gmail.com"
+    "email": "lumibypixelforge@gmail.com"
 }).encode()
 
 vreq = urllib.request.Request(verify_url, data=vdata, headers={"Content-Type": "application/json"})
