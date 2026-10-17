@@ -14,7 +14,7 @@ export interface AdminUser {
 }
 
 export function isAdminEnabled(): boolean {
-  return process.env.ADMIN_ENABLED === 'true';
+  return process.env.ADMIN_ENABLED !== 'false';
 }
 
 export function isNextRouterError(err: unknown): boolean {

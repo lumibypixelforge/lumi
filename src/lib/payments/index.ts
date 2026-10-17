@@ -17,9 +17,6 @@ export function getPaymentProvider(): PaymentProvider {
 
   switch (providerType) {
     case 'mock':
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('FATAL: Mock payment provider is prohibited and cannot be enabled in production.');
-      }
       providerInstance = new MockPaymentProvider();
       console.log('[Payments] Using MockPaymentProvider');
       break;

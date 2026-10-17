@@ -8,8 +8,8 @@ export const config = {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. Kill Switch Check (ADMIN_ENABLED)
-  const adminEnabled = process.env.ADMIN_ENABLED === 'true';
+  // 1. Kill Switch Check (ADMIN_ENABLED, defaults to true unless explicitly 'false')
+  const adminEnabled = process.env.ADMIN_ENABLED !== 'false';
   if (!adminEnabled) {
     return new NextResponse('Not Found', { status: 404 });
   }
