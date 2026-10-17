@@ -153,15 +153,27 @@ const DESKTOP_KEYFRAMES: Record<number, ChapterKeyframe> = {
 };
 
 const MOBILE_KEYFRAMES: Record<number, ChapterKeyframe> = {
-  1: { ...DESKTOP_KEYFRAMES[1], x: 0, y: 0.28, z: -0.1, scale: 0.72 },
-  2: { ...DESKTOP_KEYFRAMES[2], x: 0, y: 0.28, z: -0.1, scale: 0.65, yaw: 0.15 },
-  3: { ...DESKTOP_KEYFRAMES[3], x: 0, y: 0.28, z: -0.1, scale: 0.65, yaw: -0.15 },
-  4: { ...DESKTOP_KEYFRAMES[4], x: 0, y: 0.28, z: -0.1, scale: 0.65 },
-  5: { ...DESKTOP_KEYFRAMES[5], x: 0, y: 0.24, z: 0.05, scale: 0.76 },
-  6: { ...DESKTOP_KEYFRAMES[6], x: 0, y: 0.28, z: -0.1, scale: 0.65 },
-  7: { ...DESKTOP_KEYFRAMES[7], x: 0, y: 0.28, z: -0.1, scale: 0.65 },
-  8: { ...DESKTOP_KEYFRAMES[8], x: 0, y: 0.28, z: -0.1, scale: 0.65 },
-  9: { ...DESKTOP_KEYFRAMES[9], x: 0, y: 0.28, z: -0.15, scale: 0.60 },
+  1: { ...DESKTOP_KEYFRAMES[1], x: 0, y: 0.44, z: -0.08, scale: 0.46 },
+  2: { ...DESKTOP_KEYFRAMES[2], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: 0.20, headTurnY: 0.08 },
+  3: { ...DESKTOP_KEYFRAMES[3], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: -0.20, headTurnY: -0.08 },
+  4: { ...DESKTOP_KEYFRAMES[4], x: 0, y: 0.44, z: -0.08, scale: 0.44, headTiltX: 0.06 },
+  5: { ...DESKTOP_KEYFRAMES[5], x: 0, y: 0.40, z: 0.02, scale: 0.50, headTiltX: -0.02 },
+  6: { ...DESKTOP_KEYFRAMES[6], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: 0.15 },
+  7: { ...DESKTOP_KEYFRAMES[7], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: -0.25 },
+  8: { ...DESKTOP_KEYFRAMES[8], x: 0, y: 0.46, z: -0.12, scale: 0.38 },
+  9: { ...DESKTOP_KEYFRAMES[9], x: 0, y: 0.48, z: -0.16, scale: 0.34 },
+};
+
+const TABLET_KEYFRAMES: Record<number, ChapterKeyframe> = {
+  1: { ...DESKTOP_KEYFRAMES[1], x: 0, y: 0.38, z: -0.05, scale: 0.58 },
+  2: { ...DESKTOP_KEYFRAMES[2], x: 0, y: 0.38, z: -0.05, scale: 0.54, yaw: 0.20, headTurnY: 0.08 },
+  3: { ...DESKTOP_KEYFRAMES[3], x: 0, y: 0.38, z: -0.05, scale: 0.54, yaw: -0.20, headTurnY: -0.08 },
+  4: { ...DESKTOP_KEYFRAMES[4], x: 0, y: 0.38, z: -0.05, scale: 0.54, headTiltX: 0.06 },
+  5: { ...DESKTOP_KEYFRAMES[5], x: 0, y: 0.34, z: 0.05, scale: 0.62, headTiltX: -0.02 },
+  6: { ...DESKTOP_KEYFRAMES[6], x: 0, y: 0.38, z: -0.05, scale: 0.54, yaw: 0.15 },
+  7: { ...DESKTOP_KEYFRAMES[7], x: 0, y: 0.38, z: -0.05, scale: 0.54, yaw: -0.25 },
+  8: { ...DESKTOP_KEYFRAMES[8], x: 0, y: 0.40, z: -0.10, scale: 0.48 },
+  9: { ...DESKTOP_KEYFRAMES[9], x: 0, y: 0.42, z: -0.15, scale: 0.42 },
 };
 
 const GAZE_WEIGHTS: Record<number, number> = {
@@ -181,12 +193,16 @@ const GAZE_WEIGHTS: Record<number, number> = {
 function HeroFloorRing({
   groupRef,
   centerX = 0.75,
+  centerY = -0.772,
+  scale = 1.0,
 }: {
   groupRef?: React.RefObject<THREE.Group | null>;
   centerX?: number;
+  centerY?: number;
+  scale?: number;
 }) {
   return (
-    <group ref={groupRef} position={[centerX, -0.772, 0]}>
+    <group ref={groupRef} position={[centerX, centerY, 0]} scale={[scale, scale, scale]}>
       {/* 1. Flat circular stage disc */}
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[0.72, 64]} />
@@ -489,6 +505,21 @@ function LumiSceneContent({
       window.dispatchEvent(new CustomEvent('lumi:cursor-moved'));
     };
 
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches && e.touches.length > 0) {
+        const touch = e.touches[0];
+        const nx = (touch.clientX / window.innerWidth) * 2 - 1;
+        const ny = (touch.clientY / window.innerHeight) * 2 - 1;
+        mousePosRef.current = {
+          nx,
+          ny,
+          isInside: true,
+          lastMoveTime: performance.now(),
+        };
+        window.dispatchEvent(new CustomEvent('lumi:cursor-moved'));
+      }
+    };
+
     const onMouseLeave = () => {
       mousePosRef.current.isInside = false;
     };
@@ -503,12 +534,16 @@ function LumiSceneContent({
     };
 
     window.addEventListener('mousemove', onMouseMove, { passive: true });
+    window.addEventListener('touchstart', onTouchMove, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
     window.addEventListener('mouseleave', onMouseLeave);
     window.addEventListener('lumi:hover-cta', onHoverCTA);
     window.addEventListener('lumi:unhover-cta', onUnhoverCTA);
 
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('touchstart', onTouchMove);
+      window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('mouseleave', onMouseLeave);
       window.removeEventListener('lumi:hover-cta', onHoverCTA);
       window.removeEventListener('lumi:unhover-cta', onUnhoverCTA);
@@ -619,7 +654,7 @@ function LumiSceneContent({
     currentChapterFloat.current = floatChapter;
 
     // ─── 3. Interpolate Keyframes ───
-    const keyframes = isMobile ? MOBILE_KEYFRAMES : DESKTOP_KEYFRAMES;
+    const keyframes = isMobile ? MOBILE_KEYFRAMES : isTablet ? TABLET_KEYFRAMES : DESKTOP_KEYFRAMES;
     const kLow = Math.max(1, Math.min(8, Math.floor(floatChapter)));
     const kHigh = Math.min(9, kLow + 1);
     const blend = floatChapter - kLow;
@@ -942,8 +977,10 @@ function LumiSceneContent({
     // Update permanent ground shadow directly
     if (shadowGroupRef.current) {
       shadowGroupRef.current.visible = footerFade > 0.005;
-      shadowGroupRef.current.position.set(finalPosX, finalPosY - 0.768, finalPosZ);
+      const shadowYOffset = -0.768 * finalScale;
+      shadowGroupRef.current.position.set(finalPosX, finalPosY + shadowYOffset, finalPosZ);
       shadowGroupRef.current.rotation.set(0, finalYaw, 0);
+      shadowGroupRef.current.scale.set(finalScale, finalScale, finalScale);
 
       const hopFactor = Math.max(0, hopOffsetY);
       const contactFade = Math.max(0, 1 - hopFactor * 6.5) * footerFade;
@@ -1099,7 +1136,12 @@ function LumiSceneContent({
       <directionalLight position={[-4, 5, -2]} intensity={0.4} />
 
       {/* Hero Flat Stage Disc & Ellipse (smoothly dissolves as LUMI departs Chapter 1) */}
-      <HeroFloorRing groupRef={heroDiscRef} centerX={isMobile ? 0 : 0.75} />
+      <HeroFloorRing
+        groupRef={heroDiscRef}
+        centerX={isMobile ? 0 : isTablet ? 0 : 0.75}
+        centerY={isMobile ? (0.44 - 0.772 * 0.46) : isTablet ? (0.38 - 0.772 * 0.58) : -0.772}
+        scale={isMobile ? 0.46 : isTablet ? 0.58 : 1.0}
+      />
 
       {/* Permanent Professional Ground Shadow (Rock-solid across all 9 chapters) */}
       <LumiGroundShadow
@@ -1158,7 +1200,7 @@ export function LumiScene({
 
   return (
     <div
-      className="canvas-container max-md:[mask-image:linear-gradient(to_bottom,black_70%,transparent_98%)] max-md:[-webkit-mask-image:linear-gradient(to_bottom,black_70%,transparent_98%)] pointer-events-auto"
+      className="canvas-container max-lg:[mask-image:linear-gradient(to_bottom,black_260px,transparent_310px)] max-lg:[-webkit-mask-image:linear-gradient(to_bottom,black_260px,transparent_310px)] pointer-events-none"
       aria-hidden="true"
     >
       <Canvas

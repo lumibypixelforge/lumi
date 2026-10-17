@@ -95,25 +95,25 @@ function HeroChapter() {
   };
 
   return (
-    <section id="hero" className="chapter min-h-screen flex items-center relative pt-24 pb-16 scroll-mt-20">
+    <section id="hero" className="chapter min-h-screen flex items-start lg:items-center relative pt-20 sm:pt-24 pb-16 scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text & Actions (Left Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[310px] relative z-20">
             {/* Eyebrow: 20px spacing to wordmark */}
-            <p className="text-accent font-mono text-xs font-semibold tracking-widest uppercase mb-5">
+            <p className="text-accent font-mono text-xs font-semibold tracking-widest uppercase mb-4 sm:mb-5">
               STAY CLOSE, FROM ANYWHERE
             </p>
 
-            {/* Giant Wordmark: clamp(96px, 14vw, 220px), tight tracking, solid ink colour, 24px spacing */}
-            <h1 className="text-ink text-[clamp(96px,14vw,220px)] font-bold tracking-tight leading-[0.88] mb-6 overflow-hidden select-none">
+            {/* Giant Wordmark: clamp(96px, 14vw, 220px) on desktop, 6xl on mobile */}
+            <h1 className="text-ink text-6xl sm:text-7xl lg:text-[clamp(96px,14vw,220px)] font-bold tracking-tight leading-[0.9] mb-4 sm:mb-6 overflow-hidden select-none">
               <span className="inline-block animate-[fadeRise_0.85s_ease-out_forwards]">
                 LUMI
               </span>
             </h1>
 
-            {/* Subhead: 20px, max 44 characters wide, 40px spacing to buttons */}
-            <p className="text-muted text-[20px] max-w-[44ch] mb-10 leading-relaxed text-balance">
+            {/* Subhead: max 44 characters wide */}
+            <p className="text-muted text-base sm:text-lg lg:text-[20px] max-w-[44ch] mb-8 sm:mb-10 leading-relaxed text-balance">
               A compact telepresence robot you drive from your phone, with live video, two&#8209;way voice and an expressive animated face.
             </p>
 
@@ -204,19 +204,19 @@ function HeroChapter() {
 
 function MeetChapter() {
   return (
-    <section id="meet" className="chapter min-h-screen flex items-center section relative scroll-mt-20">
+    <section id="meet" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Left Half: 7 cols) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
           {/* Column 2: Text & Stacked Row Cards (Right Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[310px] relative z-20">
             <ChapterLabel number="02" label="INTRO" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold text-ink">
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Meet LUMI
             </h2>
-            <p className="text-lg text-muted mb-8 leading-relaxed text-balance">
+            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance">
               LUMI is a small robot that lets someone far away see, speak and move through a space.
               Open the app on your phone, and you are immediately there.
             </p>
@@ -270,16 +270,16 @@ function MeetChapter() {
 
 function SeeChapter() {
   return (
-    <section id="see" className="chapter min-h-screen flex items-center section relative scroll-mt-20">
+    <section id="see" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text, Checks & Clean Light Phone Mockup (Left Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[310px] relative z-20">
             <ChapterLabel number="03" label="VISION" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold text-ink">
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               See where you want to&nbsp;be
             </h2>
-            <p className="text-lg text-muted mb-10 leading-relaxed text-balance">
+            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-10 leading-relaxed text-balance">
               LUMI streams live video from its camera directly to your phone over Wi&#8209;Fi.
               Look around, check in on your space, and be present with those who matter.
             </p>
@@ -297,7 +297,7 @@ function SeeChapter() {
             </ul>
 
             {/* LUMI Companion App Device Mockup */}
-            <div className="relative max-w-[260px] sm:max-w-[280px] transition-transform duration-300 hover:scale-[1.02]">
+            <div className="relative max-w-[260px] sm:max-w-[280px] mx-auto lg:mx-0 transition-transform duration-300 hover:scale-[1.02]">
               <Image
                 src="/drive1.png"
                 alt="LUMI Companion App live video stream and touch driving controls"
@@ -324,19 +324,19 @@ function SeeChapter() {
 
 function TalkChapter() {
   return (
-    <section id="talk" className="chapter min-h-screen flex items-center section bg-surface relative scroll-mt-20">
+    <section id="talk" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Left Half: 7 cols) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
           {/* Column 2: Text & Audio Badges (Right Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[310px] relative z-20">
             <ChapterLabel number="04" label="VOICE" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold text-ink">
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Talk both ways
             </h2>
-            <p className="text-lg text-muted mb-10 leading-relaxed text-balance">
+            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-10 leading-relaxed text-balance">
               Two&#8209;way audio lets you hold a natural conversation through LUMI.
               Push&#8209;to&#8209;talk keeps audio crisp, while a lock option lets you speak hands&#8209;free with family.
             </p>
@@ -384,16 +384,16 @@ function ExpressChapter({
   const moods: LumiMood[] = ['neutral', 'happy', 'excited', 'sleep', 'angry', 'upset', 'sad', 'love'];
 
   return (
-    <section id="express" className="chapter min-h-screen flex items-center section relative pb-20 scroll-mt-20">
+    <section id="express" className="chapter min-h-screen flex items-start lg:items-center section relative pb-20 scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text & Mood Buttons (Left Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[300px] relative z-20">
             <ChapterLabel number="05" label="EXPRESSION" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold text-ink">
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Eight moods, one face
             </h2>
-            <p className="text-lg text-muted mb-8 leading-relaxed text-balance">
+            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance">
               LUMI's built&#8209;in display presents an expressive animated face with natural eyelids.
               Select any mood below to morph LUMI's face in real time.
             </p>
@@ -451,20 +451,20 @@ function ExpressChapter({
 
 function DriveChapter() {
   return (
-    <section id="drive" className="chapter min-h-screen flex items-center section bg-surface relative scroll-mt-20">
+    <section id="drive" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Left Half: 7 cols) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
           {/* Column 2: Text, Speed Chips & Mobility Controls (Right Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[310px] relative z-20">
             <ChapterLabel number="06" label="MOBILITY" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold text-ink">
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Drive from your phone
             </h2>
             {/* Revision 3: Cut 'deliberate, steady control' */}
-            <p className="text-lg text-muted mb-10 leading-relaxed text-balance">
+            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-10 leading-relaxed text-balance">
               Steer with the on-screen joystick and choose from three speeds. Dual powered wheels navigate smoothly, with an on-screen stop button.
             </p>
 
@@ -509,16 +509,16 @@ function DriveChapter() {
 
 function PowerChapter() {
   return (
-    <section id="power" className="chapter min-h-screen flex items-center section relative scroll-mt-20" style={{ backgroundColor: 'var(--color-dark-bg)' }}>
+    <section id="power" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20" style={{ backgroundColor: 'var(--color-dark-bg)' }}>
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text & Battery Info (Left Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[310px] relative z-20">
             <ChapterLabel number="07" label="POWER" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold" style={{ color: 'var(--color-dark-text)' }}>
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold" style={{ color: 'var(--color-dark-text)' }}>
               Built to keep going
             </h2>
-            <p className="text-lg mb-10 leading-relaxed text-balance" style={{ color: 'var(--color-dark-muted)' }}>
+            <p className="text-base sm:text-lg mb-6 sm:mb-10 leading-relaxed text-balance" style={{ color: 'var(--color-dark-muted)' }}>
               LUMI runs on two rechargeable 18650 lithium&#8209;ion cells and recharges over USB&#8209;C.
             </p>
 
@@ -622,20 +622,20 @@ function SpecsChapter() {
   ];
 
   return (
-    <section id="specs" className="chapter min-h-screen flex items-center section bg-surface relative scroll-mt-20">
+    <section id="specs" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Left Half: 7 cols) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
           {/* Column 2: Confirmed Specs (Right Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[280px] relative z-20">
             <ChapterLabel number="08" label="STATS" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold text-ink">
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Confirmed specifications
             </h2>
             {/* Revision 3: Replaced production certification sentence */}
-            <p className="text-lg text-muted mb-10 leading-relaxed text-balance">
+            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-10 leading-relaxed text-balance">
               Core verified hardware parameters for the LUMI telepresence robot.
               More specifications will be published before pre-orders open.
             </p>
@@ -710,16 +710,16 @@ function PreorderChapter() {
   };
 
   return (
-    <section id="preorder" className="chapter min-h-screen flex items-center section relative scroll-mt-20">
+    <section id="preorder" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Pre-order Reservation Module (Left Half: 5 cols) */}
-          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[42vh] relative z-20">
+          <div className="lg:col-span-5 max-w-[520px] max-lg:pt-[260px] relative z-20">
             <ChapterLabel number="09" label="ORDER" />
-            <h2 className="mb-6 text-balance text-3xl sm:text-4xl font-bold text-ink">
+            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Reserve your LUMI
             </h2>
-            <p className="text-lg text-muted mb-10 leading-relaxed text-balance">
+            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-10 leading-relaxed text-balance">
               Secure priority shipping from Batch 01 with a {depositText} refundable deposit. The remaining balance of {balanceText} is payable only before your robot ships in {DEFAULT_PRICING.shippingEstimate || 'Q3 2026'}.
             </p>
 

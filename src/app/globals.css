@@ -79,6 +79,7 @@
   --color-surface-raised: #F0EFF4;
   --color-border: #E2E0EA;
   --color-border-strong: #C9C5D6;
+  --color-card: #FFFFFF;
   --color-success: #2D9D6F;
   --color-warning: #D4930D;
   --color-error: #D93636;
@@ -441,7 +442,13 @@ body {
   position: relative;
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+}
+
+@media (min-width: 1024px) {
+  .chapter {
+    align-items: center;
+  }
 }
 
 .chapter-content {
