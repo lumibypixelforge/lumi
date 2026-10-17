@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireAdmin, requireFreshAuth, logAdminAudit, isNextRouterError } from '@/lib/admin/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: Request) {
   try {
     // 1. Authorization: Only 'owner' or 'admin' can export (viewers denied)
