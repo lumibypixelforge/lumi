@@ -50,7 +50,7 @@ if (typeof window !== 'undefined') {
 
 function ChapterLabel({ number, label }: { number: string; label: string }) {
   return (
-    <div className="flex items-center gap-3 mb-3">
+    <div className="flex items-baseline gap-3 mb-3">
       <span className="chapter-number">{number}</span>
       <span className="micro-label">{label}</span>
     </div>
@@ -59,7 +59,7 @@ function ChapterLabel({ number, label }: { number: string; label: string }) {
 
 // ─── 01 Hero Chapter ────────────────────────────────────────────────
 
-function HeroChapter() {
+function HeroChapter({ preordersOpen = true }: { preordersOpen?: boolean }) {
   const [highlightedLabel, setHighlightedLabel] = useState<string | null>(null);
   const [cursorHintVisible, setCursorHintVisible] = useState(true);
 
@@ -92,7 +92,7 @@ function HeroChapter() {
   };
 
   return (
-    <section id="hero" className="chapter min-h-screen flex items-start lg:items-center relative pt-4 sm:pt-24 pb-12 scroll-mt-20">
+    <section id="hero" className="chapter min-h-screen flex items-start lg:items-center relative pt-4 sm:pt-24 pb-12">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text & Actions (Left Half: 5 cols) */}
@@ -117,12 +117,12 @@ function HeroChapter() {
             {/* Buttons (min 44px tap targets) */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 mb-8">
               <Link
-                href="/preorder"
+                href={preordersOpen ? '/preorder' : '/#preorder'}
                 onMouseEnter={triggerCtaHover}
                 onMouseLeave={triggerCtaUnhover}
                 className="btn btn-primary btn-lg min-h-[48px] inline-flex items-center justify-center gap-2 no-underline group cursor-pointer"
               >
-                <span>Pre-Order Now</span>
+                <span>{preordersOpen ? 'Pre-Order Now' : 'Join the waitlist'}</span>
                 <IconArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
               </Link>
               <a href="#meet" className="btn btn-secondary btn-lg min-h-[48px] no-underline text-center">
@@ -201,7 +201,7 @@ function HeroChapter() {
 
 function MeetChapter() {
   return (
-    <section id="meet" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20">
+    <section id="meet" className="chapter min-h-screen flex items-start lg:items-center section relative">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
@@ -220,7 +220,7 @@ function MeetChapter() {
 
             {/* Three stacked row cards (min 16px body, 12px gap, 20px padding) */}
             <div className="flex flex-col gap-3">
-              <div className="card p-5 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
+              <div className="card p-5 h-auto min-h-0 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
                 <div className="w-10 h-10 bg-accent-light rounded-md flex items-center justify-center shrink-0">
                   <IconCamera size={20} className="text-accent" />
                 </div>
@@ -232,7 +232,7 @@ function MeetChapter() {
                 </div>
               </div>
 
-              <div className="card p-5 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
+              <div className="card p-5 h-auto min-h-0 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
                 <div className="w-10 h-10 bg-accent-light rounded-md flex items-center justify-center shrink-0">
                   <IconSmile size={20} className="text-accent" />
                 </div>
@@ -244,7 +244,7 @@ function MeetChapter() {
                 </div>
               </div>
 
-              <div className="card p-5 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
+              <div className="card p-5 h-auto min-h-0 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
                 <div className="w-10 h-10 bg-accent-light rounded-md flex items-center justify-center shrink-0">
                   <IconNavigation size={20} className="text-accent" />
                 </div>
@@ -267,7 +267,7 @@ function MeetChapter() {
 
 function SeeChapter() {
   return (
-    <section id="see" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20">
+    <section id="see" className="chapter min-h-screen flex items-start lg:items-center section relative">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text, Checks & Clean Illustrated Phone Mockup (Left Half: 5 cols) */}
@@ -321,7 +321,7 @@ function SeeChapter() {
 
 function TalkChapter() {
   return (
-    <section id="talk" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative scroll-mt-20">
+    <section id="talk" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
@@ -339,16 +339,16 @@ function TalkChapter() {
               Push&#8209;to&#8209;talk lets you speak on demand, while a lock option lets you speak hands&#8209;free.
             </p>
 
-            {/* Feature Cards */}
+            {/* Feature Cards with 20px padding and zero wasted bottom space */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-              <div className="card p-5 bg-ground border border-border rounded-lg">
+              <div className="card p-5 h-auto min-h-0 bg-ground border border-border rounded-lg">
                 <div className="w-8 h-8 mb-2 bg-accent-light rounded flex items-center justify-center">
                   <IconMicrophone size={18} className="text-accent" />
                 </div>
                 <p className="text-sm font-semibold text-ink">Push&#8209;to&#8209;Talk</p>
                 <p className="text-xs text-muted mt-1 leading-relaxed">Tap and hold to broadcast your voice instantly.</p>
               </div>
-              <div className="card p-5 bg-ground border border-border rounded-lg">
+              <div className="card p-5 h-auto min-h-0 bg-ground border border-border rounded-lg">
                 <div className="w-8 h-8 mb-2 bg-accent-light rounded flex items-center justify-center">
                   <IconSmile size={18} className="text-accent" />
                 </div>
@@ -374,15 +374,17 @@ function TalkChapter() {
 function ExpressChapter({
   activeMood,
   onMoodSelect,
+  preordersOpen = true,
 }: {
   activeMood: LumiMood;
   onMoodSelect: (m: LumiMood) => void;
+  preordersOpen?: boolean;
 }) {
   // Seven verified production moods (excited is a dynamic website reaction only)
   const moods: LumiMood[] = ['happy', 'neutral', 'sleep', 'angry', 'upset', 'sad', 'love'];
 
   return (
-    <section id="express" className="chapter min-h-screen flex items-start lg:items-center section relative pb-20 scroll-mt-20">
+    <section id="express" className="chapter min-h-screen flex items-start lg:items-center section relative pb-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text & Mood Buttons (Left Half: 5 cols) */}
@@ -393,7 +395,7 @@ function ExpressChapter({
             </h2>
             <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]">
               LUMI's built&#8209;in display presents an expressive animated face with natural eyelids.
-              Select any mood below to morph LUMI's face in the dock.
+              Select any mood below to see LUMI's face change.
             </p>
 
             {/* 4-column grid in two rows, min-h 44px, no scrollbar */}
@@ -425,13 +427,13 @@ function ExpressChapter({
               Active face mood: <span className="text-accent font-semibold capitalize">{activeMood}</span>
             </p>
 
-            {/* Pre-order CTA */}
+            {/* Pre-order / Waitlist CTA */}
             <div>
               <Link
-                href="/preorder"
+                href={preordersOpen ? '/preorder' : '/#preorder'}
                 className="btn btn-primary btn-lg min-h-[48px] inline-flex items-center justify-center gap-2 no-underline cursor-pointer"
               >
-                <span>Pre-Order LUMI</span>
+                <span>{preordersOpen ? 'Pre-Order LUMI' : 'Join the waitlist'}</span>
                 <IconArrowRight size={18} />
               </Link>
             </div>
@@ -449,7 +451,7 @@ function ExpressChapter({
 
 function DriveChapter() {
   return (
-    <section id="drive" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative scroll-mt-20">
+    <section id="drive" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
@@ -465,18 +467,18 @@ function DriveChapter() {
               Steer with the on-screen joystick and choose from three speeds. Dual powered wheels navigate smoothly, with an on-screen stop button.
             </p>
 
-            {/* Speed chips */}
+            {/* Speed chips with 20px padding and zero wasted vertical space */}
             <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mb-6">
               {PRODUCT_FACTS.drive.speedSettings.map((speed) => (
-                <div key={speed} className="card p-4 text-center bg-ground border border-border rounded-lg">
+                <div key={speed} className="card p-5 h-auto min-h-0 text-center bg-ground border border-border rounded-lg flex flex-col justify-center items-center">
                   <p className="text-2xl font-bold text-ink">{speed}</p>
                   <p className="text-xs text-muted font-mono mt-1">Speed</p>
                 </div>
               ))}
             </div>
 
-            {/* Joystick UI Card */}
-            <div className="bg-ground border border-border rounded-lg p-5 flex items-center gap-4 mb-6">
+            {/* Joystick UI Card with 20px padding */}
+            <div className="card p-5 h-auto min-h-0 bg-ground border border-border rounded-lg flex items-center gap-4 mb-6">
               <div className="w-14 h-14 bg-surface rounded-full border border-border flex items-center justify-center flex-shrink-0 relative shadow-inner">
                 <div className="w-7 h-7 bg-accent/20 rounded-full flex items-center justify-center border border-accent/40">
                   <div className="w-3.5 h-3.5 bg-accent rounded-full shadow-xs" />
@@ -506,7 +508,7 @@ function DriveChapter() {
 
 function PowerChapter() {
   return (
-    <section id="power" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20" style={{ backgroundColor: 'var(--color-dark-bg)' }}>
+    <section id="power" className="chapter min-h-screen flex items-start lg:items-center section relative" style={{ backgroundColor: 'var(--color-dark-bg)' }}>
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text & Battery Info (Left Half: 5 cols) */}
@@ -624,7 +626,7 @@ function SpecsChapter() {
   ];
 
   return (
-    <section id="specs" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative scroll-mt-20">
+    <section id="specs" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
@@ -697,12 +699,33 @@ const FAQ_ITEMS: FAQItem[] = [
   },
 ];
 
-function PreorderChapter() {
-  const [pricingApproved, setPricingApproved] = useState(false);
-  const [preordersOpen, setPreordersOpen] = useState(false);
-  const [depositPaise, setDepositPaise] = useState(DEFAULT_PRICING.depositPaise);
-  const [productPricePaise, setProductPricePaise] = useState(DEFAULT_PRICING.pricePaise);
-  const [shippingEstimate, setShippingEstimate] = useState(DEFAULT_PRICING.shippingEstimate);
+function PreorderChapter({
+  pricingApproved: propPricingApproved,
+  preordersOpen: propPreordersOpen,
+  depositPaise: propDepositPaise,
+  productPricePaise: propProductPricePaise,
+  shippingEstimate: propShippingEstimate,
+}: {
+  pricingApproved?: boolean;
+  preordersOpen?: boolean;
+  depositPaise?: number;
+  productPricePaise?: number;
+  shippingEstimate?: string;
+} = {}) {
+  const [pricingApproved, setPricingApproved] = useState(propPricingApproved ?? false);
+  const [preordersOpen, setPreordersOpen] = useState(propPreordersOpen ?? false);
+  const [depositPaise, setDepositPaise] = useState(propDepositPaise ?? DEFAULT_PRICING.depositPaise);
+  const [productPricePaise, setProductPricePaise] = useState(propProductPricePaise ?? DEFAULT_PRICING.pricePaise);
+  const [shippingEstimate, setShippingEstimate] = useState(propShippingEstimate ?? DEFAULT_PRICING.shippingEstimate);
+
+  // Sync props if passed
+  useEffect(() => {
+    if (typeof propPricingApproved === 'boolean') setPricingApproved(propPricingApproved);
+    if (typeof propPreordersOpen === 'boolean') setPreordersOpen(propPreordersOpen);
+    if (typeof propDepositPaise === 'number') setDepositPaise(propDepositPaise);
+    if (typeof propProductPricePaise === 'number') setProductPricePaise(propProductPricePaise);
+    if (typeof propShippingEstimate === 'string') setShippingEstimate(propShippingEstimate);
+  }, [propPricingApproved, propPreordersOpen, propDepositPaise, propProductPricePaise, propShippingEstimate]);
 
   // Waitlist form state
   const [waitlistEmail, setWaitlistEmail] = useState('');
@@ -710,8 +733,9 @@ function PreorderChapter() {
   const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [waitlistMessage, setWaitlistMessage] = useState('');
 
-  // Fetch settings to decide Waitlist vs Pre-order state
+  // Fetch settings to decide Waitlist vs Pre-order state if not provided
   useEffect(() => {
+    if (propPreordersOpen !== undefined && propPricingApproved !== undefined) return;
     fetch('/api/settings', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
@@ -724,7 +748,7 @@ function PreorderChapter() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [propPreordersOpen, propPricingApproved]);
 
   const depositText = formatPrice(depositPaise);
   const priceText = formatPrice(productPricePaise);
@@ -773,7 +797,7 @@ function PreorderChapter() {
   };
 
   return (
-    <section id="preorder" className="chapter min-h-screen flex items-start lg:items-center section relative scroll-mt-20">
+    <section id="preorder" className="chapter min-h-screen flex items-start lg:items-center section relative">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Order / Waitlist Module (Left Half: 5 cols) */}
@@ -990,6 +1014,28 @@ export default function HomePage() {
   const [chapter5Mood, setChapter5Mood] = useState<LumiMood>('happy');
   const [scrollPastHero, setScrollPastHero] = useState(false);
 
+  // Unified Pre-Order & Store Settings State
+  const [preordersOpen, setPreordersOpen] = useState(DEFAULT_PRICING.preordersOpen);
+  const [pricingApproved, setPricingApproved] = useState(false);
+  const [depositPaise, setDepositPaise] = useState(DEFAULT_PRICING.depositPaise);
+  const [productPricePaise, setProductPricePaise] = useState(DEFAULT_PRICING.pricePaise);
+  const [shippingEstimate, setShippingEstimate] = useState(DEFAULT_PRICING.shippingEstimate);
+
+  useEffect(() => {
+    fetch('/api/settings', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) {
+          if (typeof data.preordersOpen === 'boolean') setPreordersOpen(data.preordersOpen);
+          if (typeof data.pricingApproved === 'boolean') setPricingApproved(data.pricingApproved);
+          if (typeof data.depositPaise === 'number') setDepositPaise(data.depositPaise);
+          if (typeof data.productPricePaise === 'number') setProductPricePaise(data.productPricePaise);
+          if (typeof data.shippingEstimate === 'string') setShippingEstimate(data.shippingEstimate);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const chapterIds = ['hero', 'meet', 'see', 'talk', 'express', 'drive', 'power', 'specs', 'preorder'];
 
@@ -1051,22 +1097,35 @@ export default function HomePage() {
 
       {/* Mobile story wrapper gives page content top padding equal to --header-h + --dock-h on mobile */}
       <div className="mobile-story-wrapper relative z-10">
-        <HeroChapter />
+        <HeroChapter preordersOpen={preordersOpen} />
         <MeetChapter />
         <SeeChapter />
         <TalkChapter />
         <ExpressChapter
           activeMood={chapter5Mood}
           onMoodSelect={handleChapter5MoodSelect}
+          preordersOpen={preordersOpen}
         />
         <DriveChapter />
         <PowerChapter />
         <SpecsChapter />
-        <PreorderChapter />
+        <PreorderChapter
+          preordersOpen={preordersOpen}
+          pricingApproved={pricingApproved}
+          depositPaise={depositPaise}
+          productPricePaise={productPricePaise}
+          shippingEstimate={shippingEstimate}
+        />
       </div>
 
-      {/* Mobile bottom CTA bar */}
-      <MobileCTABar visible={scrollPastHero} activeChapter={activeChapter} />
+      {/* Mobile bottom CTA bar driven from unified preordersOpen */}
+      <MobileCTABar
+        visible={scrollPastHero}
+        activeChapter={activeChapter}
+        preordersOpen={preordersOpen}
+        pricingApproved={pricingApproved}
+        depositPaise={depositPaise}
+      />
     </>
   );
 }

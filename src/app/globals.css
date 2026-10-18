@@ -226,6 +226,8 @@ body {
   text-transform: uppercase;
   color: var(--color-accent);
   display: inline-block;
+  vertical-align: baseline;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -239,6 +241,9 @@ body {
   font-weight: 600;
   color: var(--color-accent);
   letter-spacing: 0.08em;
+  display: inline-block;
+  vertical-align: baseline;
+  line-height: 1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -479,7 +484,8 @@ body {
   }
 
   /* Chapters start straight after each other: no 100vh gaps or empty spacers */
-  .chapter {
+  .chapter,
+  [id].chapter {
     position: relative;
     min-height: auto !important;
     display: block !important;
@@ -488,10 +494,10 @@ body {
     scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + var(--dock-h) + 16px) !important;
   }
 
-  /* Hero exception: large robot (46svh) above headline on initial load */
+  /* Hero: large robot (46svh) on load, 0 bottom padding so gap to Ch 02 is exactly 48px */
   #hero.chapter {
     padding-top: calc(clamp(260px, 46svh, 380px) - var(--dock-h) + 24px) !important;
-    padding-bottom: 40px !important;
+    padding-bottom: 0px !important;
   }
 
   /* Mobile Type & Spacing: 8px grid (Section 5) */
@@ -516,9 +522,11 @@ body {
     margin-bottom: 12px !important;
   }
 
-  /* Full width cards with 20px padding and 12px gap */
+  /* Full width cards with 20px padding and zero wasted vertical space */
   .chapter .card {
     width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
     padding: 20px !important;
     border-radius: 8px !important;
     border-width: 1px !important;

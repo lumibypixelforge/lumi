@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LumiLogo } from './lumi-logo';
@@ -11,6 +12,7 @@ export function Header() {
   if (pathname?.startsWith('/admin')) {
     return null;
   }
+  const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [pricingApproved, setPricingApproved] = useState(false);
@@ -19,6 +21,10 @@ export function Header() {
 
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const navLinks = [
     { label: 'Meet LUMI', href: '/#meet' },
@@ -179,14 +185,15 @@ export function Header() {
         />
       </div>
 
-      {/* Full-Height Mobile Drawer with Focus Trap & Locked Scroll */}
-      {mobileMenuOpen && (
+      {/* Full-Height Mobile Drawer rendered via Portal with solid background */}
+      {mounted && mobileMenuOpen && createPortal(
         <div
           ref={drawerRef}
           role="dialog"
           aria-modal="true"
           aria-label="Mobile Navigation"
-          className="md:!hidden fixed inset-0 z-[200] bg-surface flex flex-col justify-between p-6 pt-[calc(env(safe-area-inset-top,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)] animate-[fadeRise_0.2s_ease-out_forwards]"
+          className="md:!hidden fixed inset-0 z-[9999] w-screen h-[100dvh] bg-[#FFFFFF] flex flex-col justify-between p-6 pt-[calc(env(safe-area-inset-top,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)]"
+          style={{ backgroundColor: '#FFFFFF' }}
         >
           {/* Top Bar inside Drawer */}
           <div>
@@ -248,7 +255,8 @@ export function Header() {
               LUMI TELEPRESENCE
             </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </header>
   );

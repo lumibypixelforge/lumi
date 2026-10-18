@@ -8,12 +8,28 @@ import { IconArrowRight } from './icons';
 interface MobileCTABarProps {
   visible?: boolean;
   activeChapter?: number;
+  preordersOpen?: boolean;
+  pricingApproved?: boolean;
+  depositPaise?: number;
 }
 
-export function MobileCTABar({ visible = true, activeChapter = 1 }: MobileCTABarProps) {
-  const [preordersOpen, setPreordersOpen] = useState(DEFAULT_PRICING.preordersOpen);
-  const [pricingApproved, setPricingApproved] = useState(false);
-  const [depositPaise, setDepositPaise] = useState(DEFAULT_PRICING.depositPaise);
+export function MobileCTABar({
+  visible = true,
+  activeChapter = 1,
+  preordersOpen: propPreordersOpen,
+  pricingApproved: propPricingApproved,
+  depositPaise: propDepositPaise,
+}: MobileCTABarProps) {
+  const [preordersOpen, setPreordersOpen] = useState(propPreordersOpen ?? DEFAULT_PRICING.preordersOpen);
+  const [pricingApproved, setPricingApproved] = useState(propPricingApproved ?? false);
+  const [depositPaise, setDepositPaise] = useState(propDepositPaise ?? DEFAULT_PRICING.depositPaise);
+
+  // Sync props if passed
+  useEffect(() => {
+    if (typeof propPreordersOpen === 'boolean') setPreordersOpen(propPreordersOpen);
+    if (typeof propPricingApproved === 'boolean') setPricingApproved(propPricingApproved);
+    if (typeof propDepositPaise === 'number') setDepositPaise(propDepositPaise);
+  }, [propPreordersOpen, propPricingApproved, propDepositPaise]);
 
   // Visibility states
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -21,8 +37,9 @@ export function MobileCTABar({ visible = true, activeChapter = 1 }: MobileCTABar
   const [footerInView, setFooterInView] = useState(false);
   const [isShortScreen, setIsShortScreen] = useState(false);
 
-  // Fetch settings from API
+  // Fetch settings from API if not passed as props
   useEffect(() => {
+    if (propPreordersOpen !== undefined) return;
     fetch('/api/settings', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
@@ -33,7 +50,7 @@ export function MobileCTABar({ visible = true, activeChapter = 1 }: MobileCTABar
         }
       })
       .catch(() => {});
-  }, []);
+  }, [propPreordersOpen]);
 
   // Screen height & visual viewport check for mobile keyboard
   useEffect(() => {

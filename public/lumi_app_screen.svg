@@ -94,16 +94,14 @@
       </g>
 
       <!-- Top Right: Audio / Battery Status -->
-      <g transform="translate(244, 98)">
-        <rect x="0" y="0" width="112" height="28" rx="6" fill="rgba(20,18,31,0.72)" backdrop-filter="blur(8px)" />
+      <g transform="translate(270, 98)">
+        <rect x="0" y="0" width="86" height="28" rx="6" fill="rgba(20,18,31,0.72)" backdrop-filter="blur(8px)" />
         <!-- Wi-Fi Icon -->
         <path d="M 16,20 A 4,4 0 0,1 24,20 M 13,17 A 8,8 0 0,1 27,17 M 10,14 A 12,12 0 0,1 30,14" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" />
         <!-- Battery Icon -->
-        <rect x="76" y="9" width="22" height="10" rx="2" fill="none" stroke="#FFFFFF" stroke-width="1.5" />
-        <rect x="99" y="12" width="2" height="4" rx="1" fill="#FFFFFF" />
-        <rect x="78.5" y="11.5" width="15" height="5" rx="1" fill="#2D9D6F" />
-        <!-- HD Tag -->
-        <text x="40" y="18" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">720p</text>
+        <rect x="50" y="9" width="22" height="10" rx="2" fill="none" stroke="#FFFFFF" stroke-width="1.5" />
+        <rect x="73" y="12" width="2" height="4" rx="1" fill="#FFFFFF" />
+        <rect x="52.5" y="11.5" width="15" height="5" rx="1" fill="#2D9D6F" />
       </g>
 
       <!-- Bottom Center: Telepresence Room Location Tag -->
@@ -150,7 +148,7 @@
 
       <!-- Speed Toggle -->
       <rect x="260" y="0" width="68" height="42" rx="8" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
-      <text x="294" y="25" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">SPD 2</text>
+      <text x="294" y="25" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">SPEED</text>
     </g>
 
     <!-- iOS Home Indicator Bar -->

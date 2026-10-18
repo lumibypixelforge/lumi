@@ -151,17 +151,17 @@ const DESKTOP_KEYFRAMES: Record<number, ChapterKeyframe> = {
   },
 };
 
-// Mobile Robot Dock (<768px): No sideways travel (x: 0), centered in dock (y: 0.0), scale fits dock height
+// Mobile Robot Dock (<768px): No sideways travel (x: 0), centered in dock (y: 0.0), scale fills ~80% of dock height
 const MOBILE_KEYFRAMES: Record<number, ChapterKeyframe> = {
-  1: { ...DESKTOP_KEYFRAMES[1], x: 0, y: 0.0, z: 0, scale: 1.10 },
-  2: { ...DESKTOP_KEYFRAMES[2], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: 0.20, headTurnY: 0.10 },
-  3: { ...DESKTOP_KEYFRAMES[3], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: -0.20, headTurnY: -0.10 },
-  4: { ...DESKTOP_KEYFRAMES[4], x: 0, y: 0.0, z: 0, scale: 1.02, headTiltX: 0.06 },
-  5: { ...DESKTOP_KEYFRAMES[5], x: 0, y: 0.0, z: 0, scale: 1.06, headTiltX: -0.02 },
-  6: { ...DESKTOP_KEYFRAMES[6], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: 0.15 },
-  7: { ...DESKTOP_KEYFRAMES[7], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: -0.25, headTurnY: -0.08 },
-  8: { ...DESKTOP_KEYFRAMES[8], x: 0, y: 0.0, z: 0, scale: 0.98 },
-  9: { ...DESKTOP_KEYFRAMES[9], x: 0, y: 0.0, z: 0, scale: 0.98 },
+  1: { ...DESKTOP_KEYFRAMES[1], x: 0, y: 0.0, z: 0, scale: 1.18 },
+  2: { ...DESKTOP_KEYFRAMES[2], x: 0, y: 0.0, z: 0, scale: 1.18, yaw: 0.20, headTurnY: 0.10 },
+  3: { ...DESKTOP_KEYFRAMES[3], x: 0, y: 0.0, z: 0, scale: 1.18, yaw: -0.20, headTurnY: -0.10 },
+  4: { ...DESKTOP_KEYFRAMES[4], x: 0, y: 0.0, z: 0, scale: 1.18, headTiltX: 0.06 },
+  5: { ...DESKTOP_KEYFRAMES[5], x: 0, y: 0.0, z: 0, scale: 1.20, headTiltX: -0.02 },
+  6: { ...DESKTOP_KEYFRAMES[6], x: 0, y: 0.0, z: 0, scale: 1.18, yaw: 0.15 },
+  7: { ...DESKTOP_KEYFRAMES[7], x: 0, y: 0.0, z: 0, scale: 1.18, yaw: -0.25, headTurnY: -0.08 },
+  8: { ...DESKTOP_KEYFRAMES[8], x: 0, y: 0.0, z: 0, scale: 1.16 },
+  9: { ...DESKTOP_KEYFRAMES[9], x: 0, y: 0.0, z: 0, scale: 1.16 },
 };
 
 const TABLET_KEYFRAMES: Record<number, ChapterKeyframe> = {
@@ -301,19 +301,23 @@ function LumiSceneContent({
   const ambientLightRef = useRef<THREE.AmbientLight>(null!);
   const directionalLightRef = useRef<THREE.DirectionalLight>(null!);
 
-  const initialStageX = isMobile ? 0 : 0.75;
+  const initialKeyframe = isMobile ? MOBILE_KEYFRAMES[1] : isTablet ? TABLET_KEYFRAMES[1] : DESKTOP_KEYFRAMES[1];
+  const initialStageX = initialKeyframe.x;
+  const initialStageY = initialKeyframe.y;
+  const initialStageScale = initialKeyframe.scale * responsiveScaleMul;
 
-  // Smooth transform states
-  const curPos = useRef(new THREE.Vector3(initialStageX, 0, 0));
+  // Smooth transform states initialized to exact chapter 1 position
+  const curPos = useRef(new THREE.Vector3(initialStageX, initialStageY, 0));
   const curYaw = useRef(0);
   const curRoll = useRef(0);
-  const curScale = useRef(1.10);
+  const curScale = useRef(initialStageScale);
   const curHeadTiltX = useRef(0);
   const curHeadTurnY = useRef(0);
 
   // Velocity tracking
   const prevTargetX = useRef(initialStageX);
   const smoothedVx = useRef(0);
+  const isFirstFrameRef = useRef(true);
 
   // Wheel velocities
   const wheelSpinL = useRef(0);
@@ -627,7 +631,7 @@ function LumiSceneContent({
     if (isTabHiddenRef.current || !modelGroupRef.current) return;
 
     const t = state.clock.elapsedTime;
-    const safeDelta = Math.min(delta, 1 / 30);
+    const safeDelta = isFirstFrameRef.current ? Math.min(delta, 1 / 60) : Math.min(delta, 1 / 30);
     const nowMs = performance.now();
 
     // ─── 1. Footer Clearance Fade ───
@@ -761,6 +765,14 @@ function LumiSceneContent({
     const posLerp = 1 - Math.exp(-7.5 * safeDelta);
     const rotLerp = 1 - Math.exp(-9.0 * safeDelta);
 
+    if (isFirstFrameRef.current) {
+      isFirstFrameRef.current = false;
+      curPos.current.set(targetX, targetY, targetZ);
+      curYaw.current = targetYaw;
+      curScale.current = targetScale;
+      prevTargetX.current = targetX;
+    }
+
     let finalPosX = THREE.MathUtils.lerp(curPos.current.x, targetX, posLerp);
     let finalPosY = THREE.MathUtils.lerp(curPos.current.y, targetY, posLerp);
     let finalPosZ = THREE.MathUtils.lerp(curPos.current.z, targetZ, posLerp);
@@ -807,70 +819,84 @@ function LumiSceneContent({
     // ─── 7. Hero Intro Sequence (Starts ON-STAGE immediately) ───
     let isIntroDriving = false;
     if (introActive && !introFinishedRef.current) {
-      if (introStartTimeRef.current === null) {
-        introStartTimeRef.current = t;
-      }
-      const introElapsed = t - introStartTimeRef.current;
-      const heroStageX = isMobile ? 0 : 0.75;
-      const radiusX = isMobile ? 0.18 : 0.50;
-      const radiusZ = isMobile ? 0.08 : 0.30;
-
-      if (introElapsed < 0.6) {
-        finalPosX = heroStageX;
-        finalPosZ = 0;
-        finalYaw = 0;
-        wheelSpinL.current = 0;
-        wheelSpinR.current = 0;
-
-        const u = introElapsed / 0.6;
-        hopOffsetY = Math.sin(u * Math.PI) * 0.08;
-        squashScaleY = 1.0 + Math.sin(u * Math.PI) * 0.04;
-        squashScaleXZ = 1.0 - Math.sin(u * Math.PI) * 0.03;
-      } else if (introElapsed < 3.2) {
-        isIntroDriving = true;
-        const lapProgress = (introElapsed - 0.6) / 2.6;
-        const lapAngle = lapProgress * Math.PI * 2;
-
-        const envelope = Math.sin(lapProgress * Math.PI);
-        const currentRadiusX = radiusX * envelope;
-        const currentRadiusZ = radiusZ * envelope;
-
-        finalPosX = heroStageX + Math.sin(lapAngle) * currentRadiusX;
-        finalPosZ = (1 - Math.cos(lapAngle)) * 0.5 * currentRadiusZ;
-
-        const tangentYaw = normalizeAngle(Math.cos(lapAngle) * 0.5);
-        finalYaw = lerpAngle(curYaw.current, tangentYaw, 0.18);
-        finalRoll = -0.03 * envelope;
-
-        wheelSpinL.current = 3.6;
-        wheelSpinR.current = 4.2;
-
-        if (lapProgress > 0.15 && lapProgress < 0.35) {
-          window.dispatchEvent(new CustomEvent('lumi:highlight-label', { detail: 'vision' }));
-        } else if (lapProgress > 0.45 && lapProgress < 0.65) {
-          window.dispatchEvent(new CustomEvent('lumi:highlight-label', { detail: 'voice' }));
-        } else if (lapProgress > 0.70 && lapProgress < 0.88) {
-          window.dispatchEvent(new CustomEvent('lumi:highlight-label', { detail: 'drive' }));
-        }
-      } else if (introElapsed < 3.8) {
-        finalPosX = heroStageX;
-        finalPosZ = 0;
-        finalYaw = lerpAngle(curYaw.current, 0, rotLerp);
-        finalRoll = 0;
-        wheelSpinL.current = 0;
-        wheelSpinR.current = 0;
-
-        if (introElapsed < 3.6) {
-          const hopU = (introElapsed - 3.2) / 0.4;
-          hopOffsetY = Math.sin(hopU * Math.PI) * 0.04;
-        }
-      } else {
+      // If user has started scrolling down, dismiss intro immediately and blend with scroll
+      if (scrollY > 20) {
         introFinishedRef.current = true;
         setIntroActive(false);
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('lumi_hero_intro_played', 'true');
+      } else {
+        if (introStartTimeRef.current === null) {
+          introStartTimeRef.current = t;
         }
-        window.dispatchEvent(new CustomEvent('lumi:intro-complete'));
+        const introElapsed = t - introStartTimeRef.current;
+        const heroStageX = isMobile ? 0 : 0.75;
+
+        if (introElapsed < 0.6) {
+          finalPosX = heroStageX;
+          finalPosZ = 0;
+          finalYaw = 0;
+          wheelSpinL.current = 0;
+          wheelSpinR.current = 0;
+
+          const u = introElapsed / 0.6;
+          hopOffsetY = Math.sin(u * Math.PI) * 0.08;
+          squashScaleY = 1.0 + Math.sin(u * Math.PI) * 0.04;
+          squashScaleXZ = 1.0 - Math.sin(u * Math.PI) * 0.03;
+        } else if (introElapsed < 3.2) {
+          if (!isMobile) {
+            // Desktop: smooth circular lap around stage with zero-jerk envelope
+            isIntroDriving = true;
+            const lapProgress = (introElapsed - 0.6) / 2.6;
+            const lapAngle = lapProgress * Math.PI * 2;
+            const envelope = Math.sin(lapProgress * Math.PI);
+            const currentRadiusX = 0.45 * envelope;
+            const currentRadiusZ = 0.25 * envelope;
+
+            finalPosX = heroStageX + Math.sin(lapAngle) * currentRadiusX;
+            finalPosZ = (1 - Math.cos(lapAngle)) * 0.5 * currentRadiusZ;
+
+            // Modulate tangentYaw with envelope so it smoothly eases in and eases out to 0
+            const tangentYaw = normalizeAngle(Math.cos(lapAngle) * 0.35 * envelope);
+            finalYaw = lerpAngle(curYaw.current, tangentYaw, 0.18);
+            finalRoll = -0.02 * envelope;
+
+            wheelSpinL.current = 3.6;
+            wheelSpinR.current = 4.2;
+
+            if (lapProgress > 0.15 && lapProgress < 0.35) {
+              window.dispatchEvent(new CustomEvent('lumi:highlight-label', { detail: 'vision' }));
+            } else if (lapProgress > 0.45 && lapProgress < 0.65) {
+              window.dispatchEvent(new CustomEvent('lumi:highlight-label', { detail: 'voice' }));
+            } else if (lapProgress > 0.70 && lapProgress < 0.88) {
+              window.dispatchEvent(new CustomEvent('lumi:highlight-label', { detail: 'drive' }));
+            }
+          } else {
+            // Mobile: dock is compact, keep robot rock-solid centered (x=0, z=0) with subtle eye wake-up
+            finalPosX = 0;
+            finalPosZ = 0;
+            finalYaw = 0;
+            wheelSpinL.current = 0;
+            wheelSpinR.current = 0;
+          }
+        } else if (introElapsed < 3.8) {
+          finalPosX = heroStageX;
+          finalPosZ = 0;
+          finalYaw = lerpAngle(curYaw.current, 0, rotLerp);
+          finalRoll = 0;
+          wheelSpinL.current = 0;
+          wheelSpinR.current = 0;
+
+          if (introElapsed < 3.6) {
+            const hopU = (introElapsed - 3.2) / 0.4;
+            hopOffsetY = Math.sin(hopU * Math.PI) * 0.04;
+          }
+        } else {
+          introFinishedRef.current = true;
+          setIntroActive(false);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('lumi_hero_intro_played', 'true');
+          }
+          window.dispatchEvent(new CustomEvent('lumi:intro-complete'));
+        }
       }
     }
 
@@ -1207,8 +1233,8 @@ function LumiSceneContent({
       <HeroFloorRing
         groupRef={heroDiscRef}
         centerX={isMobile ? 0 : isTablet ? 0 : 0.75}
-        centerY={isMobile ? -0.772 * 1.02 : isTablet ? (0.38 - 0.772 * 0.58) : -0.772}
-        scale={isMobile ? 1.02 : isTablet ? 0.58 : 1.0}
+        centerY={isMobile ? -0.72 : isTablet ? (0.38 - 0.772 * 0.58) : -0.772}
+        scale={isMobile ? 0.46 : isTablet ? 0.58 : 1.0}
       />
 
       {/* Permanent Ground Shadow */}

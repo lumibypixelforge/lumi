@@ -27,17 +27,30 @@ export async function GET() {
       configMap[s.key] = s.value;
     });
 
-    const pricingApproved = Boolean(configMap['pricingApproved']);
-    const preordersOpen = Boolean(configMap['preordersOpen']);
+    const pricingApproved = Boolean(
+      configMap['pricingApproved'] ??
+      (typeof configMap['pricing_approval'] === 'object' && configMap['pricing_approval'] !== null
+        ? (configMap['pricing_approval'] as { approved?: boolean }).approved
+        : configMap['pricing_approval'])
+    );
+    const preordersOpen = Boolean(
+      configMap['preordersOpen'] ?? configMap['preorders_open'] ?? DEFAULT_PRICING.preordersOpen
+    );
     const depositPaise = typeof configMap['depositPaise'] === 'number'
       ? configMap['depositPaise']
-      : DEFAULT_PRICING.depositPaise;
+      : typeof configMap['deposit_paise'] === 'number' && configMap['deposit_paise'] !== null
+        ? (configMap['deposit_paise'] as number)
+        : DEFAULT_PRICING.depositPaise;
     const productPricePaise = typeof configMap['productPricePaise'] === 'number'
       ? configMap['productPricePaise']
-      : DEFAULT_PRICING.pricePaise;
+      : typeof configMap['product_price_paise'] === 'number' && configMap['product_price_paise'] !== null
+        ? (configMap['product_price_paise'] as number)
+        : DEFAULT_PRICING.pricePaise;
     const shippingEstimate = typeof configMap['shippingEstimate'] === 'string'
       ? configMap['shippingEstimate']
-      : DEFAULT_PRICING.shippingEstimate;
+      : typeof configMap['shipping_estimate'] === 'string' && configMap['shipping_estimate'] !== null && configMap['shipping_estimate'] !== 'TBA'
+        ? (configMap['shipping_estimate'] as string)
+        : DEFAULT_PRICING.shippingEstimate;
 
     return NextResponse.json({
       preordersOpen,
