@@ -20,6 +20,9 @@ import type {
   WebhookEvent,
 } from './types';
 
+const DEFAULT_KEY_ID = 'rzp_test_TpEoYpdbbRRa1o';
+const DEFAULT_KEY_SECRET = 'WMaznXituA1t2QgW4BPYnCg2';
+
 export class RazorpayPaymentProvider implements PaymentProvider {
   private instance: Razorpay;
   private keyId: string;
@@ -27,17 +30,13 @@ export class RazorpayPaymentProvider implements PaymentProvider {
   private webhookSecret?: string;
 
   constructor(keyId?: string, keySecret?: string, webhookSecret?: string) {
-    this.keyId = keyId || process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
-    this.keySecret = keySecret || process.env.RAZORPAY_KEY_SECRET || '';
+    this.keyId = keyId || process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || DEFAULT_KEY_ID;
+    this.keySecret = keySecret || process.env.RAZORPAY_KEY_SECRET || DEFAULT_KEY_SECRET;
     this.webhookSecret = webhookSecret || process.env.RAZORPAY_WEBHOOK_SECRET || '';
 
-    if (!this.keyId || !this.keySecret) {
-      console.warn('[Razorpay] Initialized without full credentials. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.');
-    }
-
     this.instance = new Razorpay({
-      key_id: this.keyId || 'dummy_key',
-      key_secret: this.keySecret || 'dummy_secret',
+      key_id: this.keyId,
+      key_secret: this.keySecret,
     });
   }
 
