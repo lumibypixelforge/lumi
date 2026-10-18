@@ -293,18 +293,18 @@ function SeeChapter() {
               </li>
             </ul>
 
-            {/* Crisp Illustrated LUMI Companion App Mockup (No stock photo, no fake latency metrics) */}
+            {/* LUMI Companion App Device Mockup */}
             <div className="relative max-w-[260px] sm:max-w-[280px] mx-auto lg:mx-0 transition-transform duration-300 hover:scale-[1.02]">
               <Image
-                src="/lumi_app_screen.svg"
-                alt="LUMI Companion App simulated interface showing telepresence view and steering controls"
+                src="/drive1.png"
+                alt="LUMI Companion App live video stream and touch driving controls"
                 width={853}
                 height={1844}
-                className="w-full h-auto object-contain block select-none pointer-events-none drop-shadow-[0_16px_36px_rgba(0,0,0,0.12)]"
+                className="w-full h-auto object-contain block select-none pointer-events-none drop-shadow-[0_16px_36px_rgba(0,0,0,0.14)]"
                 priority
               />
               <p className="text-[11px] font-mono text-muted text-center mt-3 tracking-wider uppercase">
-                LUMI Companion App (Simulated Interface)
+                LUMI Companion App
               </p>
             </div>
           </div>
