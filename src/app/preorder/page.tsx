@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -19,6 +19,7 @@ import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronUp,
+  IconMail,
 } from '@/components/ui/icons';
 
 const INDIAN_STATES = [
@@ -95,6 +96,16 @@ export default function PreorderPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
+
+  // ─── 6-Digit Email OTP Verification State ───────────────────────────
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [isSubmittingOtp, setIsSubmittingOtp] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const [resendNotice, setResendNotice] = useState('');
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // ─── Preorder Delivery Form State ───────────────────────────────────
   const [formData, setFormData] = useState<FormData>({
@@ -254,6 +265,15 @@ export default function PreorderPage() {
     checkAuth();
   }, []);
 
+  // Resend countdown timer
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (resendCountdown > 0) {
+      timer = setTimeout(() => setResendCountdown((prev) => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCountdown]);
+
   // ─── Authentication Handler ─────────────────────────────────────────
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -318,6 +338,20 @@ export default function PreorderPage() {
           throw error;
         }
 
+        // Email confirmation is required (Supabase mailer_autoconfirm is false)
+        if (data.user && !data.session) {
+          setIsVerifyingOtp(true);
+          setOtpEmail(cleanEmail);
+          setOtpDigits(['', '', '', '', '', '']);
+          setOtpError('');
+          setResendCountdown(30);
+          setResendNotice(`A 6-digit verification code has been sent to ${cleanEmail}.`);
+          setTimeout(() => {
+            otpInputRefs.current[0]?.focus();
+          }, 100);
+          return;
+        }
+
         if (data.user) {
           setIsAuthenticated(true);
           setAuthEmail(data.user.email || cleanEmail);
@@ -339,6 +373,23 @@ export default function PreorderPage() {
         });
 
         if (error) {
+          const msg = error.message.toLowerCase();
+          if (msg.includes('email not confirmed') || msg.includes('not verified')) {
+            await supabase.auth.resend({
+              type: 'signup',
+              email: cleanEmail,
+            }).catch(() => {});
+            setIsVerifyingOtp(true);
+            setOtpEmail(cleanEmail);
+            setOtpDigits(['', '', '', '', '', '']);
+            setOtpError('');
+            setResendCountdown(30);
+            setResendNotice(`Your email is not verified yet. We sent a 6-digit code to ${cleanEmail}.`);
+            setTimeout(() => {
+              otpInputRefs.current[0]?.focus();
+            }, 100);
+            return;
+          }
           throw new Error('Invalid email or password. Please verify your credentials.');
         }
 
@@ -366,6 +417,144 @@ export default function PreorderPage() {
       setLoginError(err instanceof Error ? err.message : 'Authentication failed. Please try again.');
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  // ─── OTP Digit and Verification Handlers ────────────────────────────
+  const handleOtpDigitChange = (index: number, val: string) => {
+    const digitsOnly = val.replace(/\D/g, '');
+    const newDigits = [...otpDigits];
+
+    // Multi-digit paste or typing
+    if (digitsOnly.length > 1) {
+      const pasted = digitsOnly.slice(0, 6).split('');
+      pasted.forEach((d, i) => {
+        if (i < 6) newDigits[i] = d;
+      });
+      setOtpDigits(newDigits);
+      const nextIdx = Math.min(pasted.length, 5);
+      otpInputRefs.current[nextIdx]?.focus();
+      if (newDigits.every((d) => d !== '')) {
+        handleVerifyOtp(newDigits.join(''));
+      }
+      return;
+    }
+
+    newDigits[index] = digitsOnly.slice(-1);
+    setOtpDigits(newDigits);
+
+    if (digitsOnly && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+
+    if (newDigits.every((d) => d !== '')) {
+      handleVerifyOtp(newDigits.join(''));
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    const newDigits = [...otpDigits];
+    pasted.split('').forEach((d, i) => {
+      if (i < 6) newDigits[i] = d;
+    });
+    setOtpDigits(newDigits);
+    const nextIdx = Math.min(pasted.length, 5);
+    otpInputRefs.current[nextIdx]?.focus();
+    if (pasted.length === 6) {
+      handleVerifyOtp(pasted);
+    }
+  };
+
+  const handleVerifyOtp = async (codeToVerify?: string) => {
+    const code = (codeToVerify || otpDigits.join('')).trim();
+    if (code.length !== 6) {
+      setOtpError('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    setIsSubmittingOtp(true);
+    setOtpError('');
+    setResendNotice('');
+
+    try {
+      const supabase = createClient();
+      let { data, error } = await supabase.auth.verifyOtp({
+        email: otpEmail,
+        token: code,
+        type: 'signup',
+      });
+
+      if (error) {
+        const retry = await supabase.auth.verifyOtp({
+          email: otpEmail,
+          token: code,
+          type: 'email',
+        });
+        if (!retry.error) {
+          data = retry.data;
+          error = null;
+        }
+      }
+
+      if (error) {
+        throw new Error(error.message || 'Invalid or expired verification code.');
+      }
+
+      if (data?.user) {
+        setIsAuthenticated(true);
+        setAuthEmail(data.user.email || otpEmail);
+        setAuthUserId(data.user.id);
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, phone')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        setFormData((prev) => ({
+          ...prev,
+          email: data.user?.email || otpEmail,
+          fullName: profile?.full_name || loginName.trim() || data.user?.user_metadata?.full_name || prev.fullName,
+          phone: profile?.phone || loginPhone.trim() || data.user?.user_metadata?.phone || prev.phone,
+          marketingConsent: authConsent,
+        }));
+
+        setIsVerifyingOtp(false);
+        setCurrentStep(2);
+      } else {
+        throw new Error('Verification completed, but no active session was established. Please sign in.');
+      }
+    } catch (err: unknown) {
+      setOtpError(err instanceof Error ? err.message : 'Invalid code. Please check your email and try again.');
+    } finally {
+      setIsSubmittingOtp(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCountdown > 0) return;
+    setOtpError('');
+    setResendNotice('');
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: otpEmail,
+      });
+      if (error) throw error;
+      setResendCountdown(30);
+      setResendNotice(`A new 6-digit verification code has been sent to ${otpEmail}.`);
+    } catch (err: unknown) {
+      setOtpError(err instanceof Error ? err.message : 'Failed to resend code. Please try again.');
     }
   };
 
@@ -943,6 +1132,122 @@ export default function PreorderPage() {
                       <span>Continue to delivery details</span>
                       <IconArrowRight size={16} />
                     </button>
+                  </div>
+                ) : isVerifyingOtp ? (
+                  <div>
+                    {/* 6-Digit Email OTP Verification UI */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <h2 className="preorder-card-title text-ink tracking-tight">
+                        Verify your email address
+                      </h2>
+                      <span className="inline-flex items-center gap-1.5 text-[13px] leading-[18px] text-[#6D4AE0] font-medium whitespace-nowrap shrink-0">
+                        <IconMail size={14} className="text-[#6D4AE0]" />
+                        Email OTP
+                      </span>
+                    </div>
+                    <p className="text-[15px] leading-[22px] text-muted mb-6">
+                      We sent a 6-digit verification code to <strong className="text-ink font-semibold">{otpEmail}</strong>. Enter the code below to verify your account and continue.
+                    </p>
+
+                    <div className="mb-6">
+                      <label className="block text-[13px] font-medium text-ink/80 mb-3">
+                        6-digit verification code
+                      </label>
+                      <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-sm">
+                        {otpDigits.map((digit, idx) => (
+                          <input
+                            key={idx}
+                            ref={(el) => {
+                              otpInputRefs.current[idx] = el;
+                            }}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={1}
+                            value={digit}
+                            onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
+                            onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                            onPaste={idx === 0 ? handleOtpPaste : undefined}
+                            className={`w-11 h-14 sm:w-12 sm:h-14 text-center font-mono text-2xl font-bold rounded-[6px] border outline-none transition-all ${
+                              digit
+                                ? 'border-[#6D4AE0] bg-white text-ink shadow-xs'
+                                : 'border-[#E7E4F0] bg-[#F7F6FB] text-ink'
+                            } focus:border-[#6D4AE0] focus:bg-white focus:ring-1 focus:ring-[#6D4AE0]`}
+                            disabled={isSubmittingOtp}
+                            aria-label={`Digit ${idx + 1} of verification code`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {otpError && (
+                      <div
+                        role="alert"
+                        className="p-3.5 mb-5 bg-[#B42318]/5 border border-[#B42318]/30 rounded-[6px] text-sm text-[#B42318] flex items-center gap-2"
+                      >
+                        <IconAlertCircle size={16} className="shrink-0" />
+                        <span>{otpError}</span>
+                      </div>
+                    )}
+
+                    {resendNotice && (
+                      <div
+                        role="status"
+                        className="p-3.5 mb-5 bg-[#2D9D6F]/10 border border-[#2D9D6F]/30 rounded-[6px] text-sm text-[#2D9D6F] flex items-center gap-2"
+                      >
+                        <IconCheck size={16} className="shrink-0" />
+                        <span>{resendNotice}</span>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={isSubmittingOtp || otpDigits.some((d) => !d)}
+                      onClick={() => handleVerifyOtp()}
+                      className="w-full h-12 rounded-[6px] bg-[#6D4AE0] hover:bg-[#5B3CC4] disabled:opacity-50 disabled:cursor-not-allowed text-white text-base font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      {isSubmittingOtp ? (
+                        <>
+                          <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                          <span>Verifying code...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Verify & Continue</span>
+                          <IconArrowRight size={16} />
+                        </>
+                      )}
+                    </button>
+
+                    <div className="pt-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted">
+                      <div>
+                        {resendCountdown > 0 ? (
+                          <span className="font-mono text-muted">
+                            Resend code in {resendCountdown}s
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleResendOtp}
+                            className="text-[#6D4AE0] hover:underline font-semibold cursor-pointer bg-transparent border-none p-0 inline"
+                          >
+                            Resend verification code
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsVerifyingOtp(false);
+                          setOtpDigits(['', '', '', '', '', '']);
+                          setOtpError('');
+                          setResendNotice('');
+                        }}
+                        className="text-muted hover:text-ink hover:underline cursor-pointer bg-transparent border-none p-0 inline"
+                      >
+                        Edit email or sign in
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div>
