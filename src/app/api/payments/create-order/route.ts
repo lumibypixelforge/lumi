@@ -62,10 +62,10 @@ export async function POST(req: Request) {
     const totalOrderPaise = unitPricePaise * validated.quantity;
 
     // 2. Resolve or upsert user profile
+    const cleanEmail = validated.email.toLowerCase().trim();
     let userId = validated.userId;
 
     if (!userId) {
-      const cleanEmail = validated.email.toLowerCase().trim();
 
       // Find existing profile by email
       const { data: existingProfile } = await supabase
@@ -131,7 +131,6 @@ export async function POST(req: Request) {
               email: cleanEmail,
               full_name: validated.fullName,
               phone: validated.phone,
-              role: 'customer',
               marketing_consent: validated.marketingConsent,
               updated_at: new Date().toISOString(),
             });
@@ -146,6 +145,7 @@ export async function POST(req: Request) {
 
     // 3. Create Pending Preorder record in database
     const shippingAddress = {
+      email: cleanEmail,
       fullName: validated.fullName,
       phone: validated.phone,
       addressLine1: validated.addressLine1,

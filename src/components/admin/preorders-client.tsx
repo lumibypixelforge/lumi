@@ -86,7 +86,7 @@ export function PreordersClientPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/admin/orders');
+      const res = await fetch('/api/admin/orders', { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load orders');
       const data = await res.json();
       setOrders(data.orders || []);

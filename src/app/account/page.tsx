@@ -41,7 +41,9 @@ export default function AccountPage() {
     setNotice(null);
 
     try {
-      const res = await fetch(`/api/account/orders?email=${encodeURIComponent(emailToLookup)}`);
+      const res = await fetch(`/api/account/orders?email=${encodeURIComponent(emailToLookup)}`, {
+        cache: 'no-store',
+      });
       const data = await res.json();
       if (res.ok) {
         setOrders(data.orders || []);
@@ -250,9 +252,21 @@ export default function AccountPage() {
 
             {/* Orders List */}
             <div>
-              <h2 className="text-sm font-mono uppercase tracking-wider text-muted font-semibold mb-4">
-                Active Reservations ({orders.length})
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-mono uppercase tracking-wider text-muted font-semibold">
+                  Active Reservations ({orders.length})
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => handleLookup(activeEmail || authUser?.email || '')}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline font-mono cursor-pointer disabled:opacity-50"
+                  title="Refresh reservations"
+                >
+                  <IconRefresh size={13} className={loading ? 'animate-spin' : ''} />
+                  <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+                </button>
+              </div>
 
               {orders.length === 0 ? (
                 <div className="bg-card border border-border rounded-lg p-8 text-center">

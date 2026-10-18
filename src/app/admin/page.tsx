@@ -29,6 +29,7 @@ export default async function AdminOverviewPage() {
       quantity,
       created_at,
       user_id,
+      shipping_address,
       profiles (
         full_name,
         email

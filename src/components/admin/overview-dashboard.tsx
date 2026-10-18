@@ -18,6 +18,7 @@ interface PreorderItem {
     full_name?: string | null;
     email?: string | null;
   } | null;
+  shipping_address?: any;
 }
 
 interface OverviewProps {
@@ -495,10 +496,10 @@ export function OverviewClientDashboard({
                       </td>
                       <td className="px-4 text-ink">
                         <span className="block font-medium">
-                          {order.profiles?.full_name || 'Customer'}
+                          {order.profiles?.full_name || order.shipping_address?.fullName || 'Customer'}
                         </span>
                         <span className="block text-[11px] text-muted">
-                          {order.profiles?.email || '—'}
+                          {order.profiles?.email || order.shipping_address?.email || '—'}
                         </span>
                       </td>
                       <td className="px-4 text-[12px] text-muted">

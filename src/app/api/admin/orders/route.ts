@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { requireAdmin, requireFreshAuth, logAdminAudit, isNextRouterError } from '@/lib/admin/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
 export async function GET(req: Request) {
   try {
     await requireAdmin('viewer', { isApi: true });
@@ -49,14 +55,14 @@ export async function GET(req: Request) {
       .order('created_at', { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: error.message }, { status: 500, headers: NO_CACHE_HEADERS });
     }
 
-    return NextResponse.json({ orders: orders || [] });
+    return NextResponse.json({ orders: orders || [] }, { headers: NO_CACHE_HEADERS });
   } catch (err) {
     if (isNextRouterError(err)) throw err;
     console.error('[API Admin Orders GET] Error:', err);
-    return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }
 
