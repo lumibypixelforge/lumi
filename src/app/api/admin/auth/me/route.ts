@@ -17,7 +17,9 @@ export async function GET(req: Request) {
         ? 'Staging'
         : 'Development';
 
-    const testPayments = process.env.PAYMENT_PROVIDER === 'mock';
+    const testPayments =
+      process.env.PAYMENT_PROVIDER === 'mock' ||
+      Boolean(process.env.RAZORPAY_KEY_ID?.startsWith('rzp_test_'));
 
     return NextResponse.json({
       user: {
