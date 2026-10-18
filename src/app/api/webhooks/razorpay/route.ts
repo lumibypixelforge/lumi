@@ -42,8 +42,8 @@ export async function POST(req: Request) {
       created_at: new Date().toISOString(),
     });
 
-    // Handle supported event types
-    if (event.type === 'payment.captured' && event.gatewayOrderId) {
+    // Handle payment success (payment.captured or order.paid)
+    if ((event.type === 'payment.captured' || event.type === 'order.paid') && event.gatewayOrderId) {
       // Find preorder corresponding to gateway order id
       const { data: payment } = await supabase
         .from('payments')
@@ -77,11 +77,39 @@ export async function POST(req: Request) {
           preorder_id: payment.preorder_id,
           from_status: 'pending',
           to_status: 'confirmed',
-          note: `Captured via webhook event ${event.eventId}`,
+          note: `Confirmed via webhook event ${event.type} (${event.eventId})`,
         });
 
         await supabase.from('audit_log').insert({
           action: 'webhook_payment_captured',
+          entity: 'preorder',
+          entity_id: payment.preorder_id,
+          after_value: { eventId: event.eventId, gatewayPaymentId: event.gatewayPaymentId, type: event.type },
+        });
+      }
+    }
+
+    // Handle payment failure
+    if (event.type === 'payment.failed' && event.gatewayOrderId) {
+      const { data: payment } = await supabase
+        .from('payments')
+        .select('id, preorder_id, status')
+        .eq('gateway_order_id', event.gatewayOrderId)
+        .maybeSingle();
+
+      if (payment && payment.status !== 'paid') {
+        const now = new Date().toISOString();
+        await supabase
+          .from('payments')
+          .update({
+            status: 'failed',
+            gateway_payment_id: event.gatewayPaymentId || null,
+            updated_at: now,
+          })
+          .eq('id', payment.id);
+
+        await supabase.from('audit_log').insert({
+          action: 'webhook_payment_failed',
           entity: 'preorder',
           entity_id: payment.preorder_id,
           after_value: { eventId: event.eventId, gatewayPaymentId: event.gatewayPaymentId },
