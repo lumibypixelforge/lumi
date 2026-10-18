@@ -240,11 +240,26 @@ function AdminLoginForm() {
 
               {qrCodeSvg && (
                 <div className="flex justify-center p-3 bg-white border border-border rounded-[6px]">
-                  <img
-                    src={qrCodeSvg}
-                    alt="TOTP Setup QR Code"
-                    className="w-44 h-44"
-                  />
+                  {qrCodeSvg.includes('<svg') ? (
+                    <div
+                      className="w-44 h-44 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                      dangerouslySetInnerHTML={{
+                        __html: qrCodeSvg.slice(qrCodeSvg.indexOf('<svg')),
+                      }}
+                    />
+                  ) : (
+                    <img
+                      src={
+                        qrCodeSvg.startsWith('data:image/svg+xml;utf-8,')
+                          ? `data:image/svg+xml;utf-8,${encodeURIComponent(
+                              qrCodeSvg.replace('data:image/svg+xml;utf-8,', '')
+                            )}`
+                          : qrCodeSvg
+                      }
+                      alt="TOTP Setup QR Code"
+                      className="w-44 h-44"
+                    />
+                  )}
                 </div>
               )}
 
