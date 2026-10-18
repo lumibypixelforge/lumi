@@ -288,13 +288,13 @@ export function PreordersClientPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <nav className="text-[12px] text-muted mb-1" aria-label="Breadcrumb">
             <span>Admin</span> / <span className="text-ink">Pre-orders</span>
           </nav>
           <div className="flex items-center gap-2">
-            <h1 className="text-[28px] leading-[36px] font-semibold text-ink tracking-tight font-display">
+            <h1 className="text-[22px] sm:text-[28px] leading-[28px] sm:leading-[36px] font-semibold text-ink tracking-tight font-display">
               Pre-orders
             </h1>
             <span className="text-xs font-mono text-muted self-center">
@@ -306,7 +306,7 @@ export function PreordersClientPage() {
         <div className="flex items-center gap-2.5">
           <button
             onClick={fetchOrders}
-            className="px-3.5 py-1.5 bg-card border border-border text-ink hover:bg-canvas text-[13px] font-medium rounded-[6px] transition-colors"
+            className="px-3.5 py-1.5 bg-card border border-border text-ink hover:bg-canvas text-[12px] sm:text-[13px] font-medium rounded-[6px] transition-colors"
           >
             Refresh
           </button>
@@ -314,8 +314,8 @@ export function PreordersClientPage() {
       </div>
 
       {/* Filters Bar */}
-      <div className="p-4 bg-card border border-border rounded-[8px] flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex-1 max-w-md">
+      <div className="p-3.5 sm:p-4 bg-card border border-border rounded-[8px] flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex-1 w-full md:max-w-md">
           <input
             type="text"
             value={search}
@@ -388,7 +388,7 @@ export function PreordersClientPage() {
           </div>
         ) : paginatedOrders.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[14px] leading-[20px] border-collapse">
+            <table className="w-full min-w-[780px] text-left text-[13px] sm:text-[14px] leading-[20px] border-collapse">
               <thead className="bg-[#F1EFF8]/50 border-b border-border sticky top-0 z-10">
                 <tr className="h-10 text-[12px] text-muted font-medium select-none">
                   <th
@@ -535,7 +535,7 @@ export function PreordersClientPage() {
 
         {/* Pagination */}
         {sortedOrders.length > pageSize && (
-          <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted">
+          <div className="p-3 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-muted">
             <span>
               Showing {(currentPage - 1) * pageSize + 1}–
               {Math.min(currentPage * pageSize, sortedOrders.length)} of {sortedOrders.length}
@@ -572,14 +572,14 @@ export function PreordersClientPage() {
           aria-modal="true"
         >
           <div
-            className="fixed inset-y-0 right-0 max-w-md w-full bg-card border-l border-border shadow-xl flex flex-col justify-between"
+            className="fixed inset-y-0 right-0 max-w-full sm:max-w-md w-full bg-card border-l border-border shadow-xl flex flex-col justify-between"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drawer Header */}
-            <div className="p-5 border-b border-border flex items-center justify-between">
+            <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-[18px] leading-[28px] font-semibold text-ink font-mono">
+                  <h3 className="text-[16px] sm:text-[18px] leading-[24px] sm:leading-[28px] font-semibold text-ink font-mono">
                     {selectedOrder.order_number}
                   </h3>
                   <span
@@ -609,7 +609,7 @@ export function PreordersClientPage() {
             </div>
 
             {/* Drawer Body */}
-            <div className="p-5 flex-1 overflow-y-auto space-y-6">
+            <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4 sm:space-y-6">
               {/* Customer Info */}
               <div className="p-4 bg-canvas border border-border rounded-[8px] space-y-2">
                 <h4 className="text-[13px] font-semibold text-ink">Customer</h4>

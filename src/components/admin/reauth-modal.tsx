@@ -53,14 +53,14 @@ export function ReauthModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-[2px] flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="reauth-title"
     >
-      <div className="bg-card border border-border rounded-[8px] max-w-md w-full p-6 shadow-xl space-y-4">
+      <div className="bg-card border border-border rounded-[8px] max-w-md w-full p-4 sm:p-6 shadow-xl space-y-4 mx-2 sm:mx-auto">
         <div>
-          <h3 id="reauth-title" className="text-[18px] leading-[28px] font-semibold text-ink">
+          <h3 id="reauth-title" className="text-[16px] sm:text-[18px] leading-[24px] sm:leading-[28px] font-semibold text-ink">
             {actionTitle}
           </h3>
           <p className="text-[12px] leading-[16px] text-muted mt-1">
@@ -85,7 +85,7 @@ export function ReauthModal({
               autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-[6px] text-ink focus:outline-none focus:border-[#6420AA]"
+              className="w-full px-3 py-2 text-base sm:text-sm bg-canvas border border-border rounded-[6px] text-ink focus:outline-none focus:border-[#6420AA]"
               placeholder="••••••••••••"
             />
           </div>
@@ -102,7 +102,7 @@ export function ReauthModal({
               required
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              className="w-full px-3 py-2 text-center text-base tracking-[0.2em] font-mono bg-canvas border border-border rounded-[6px] text-ink focus:outline-none focus:border-[#6420AA]"
+              className="w-full px-3 py-2 text-center text-lg sm:text-base tracking-[0.25em] font-mono bg-canvas border border-border rounded-[6px] text-ink focus:outline-none focus:border-[#6420AA]"
               placeholder="123456"
             />
           </div>
@@ -112,14 +112,14 @@ export function ReauthModal({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-3.5 py-2 text-xs font-medium text-muted hover:text-ink transition-colors"
+              className="px-3.5 py-2 text-xs font-medium text-muted hover:text-ink transition-colors flex-1 sm:flex-initial"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || code.length !== 6 || !password}
-              className="px-4 py-2 bg-[#6420AA] hover:bg-[#52198D] text-white text-xs font-medium rounded-[6px] transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-[#6420AA] hover:bg-[#52198D] text-white text-xs font-medium rounded-[6px] transition-colors disabled:opacity-50 flex-1 sm:flex-initial"
             >
               {loading ? 'Verifying...' : 'Authorize action'}
             </button>

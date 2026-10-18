@@ -320,7 +320,7 @@ export function CustomersClientPage() {
       </div>
 
       {/* Segmented Tabs with Counts */}
-      <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-[8px] overflow-x-auto">
+      <div className="flex items-center gap-1.5 p-1 bg-card border border-border rounded-[8px] overflow-x-auto no-scrollbar">
         {(
           [
             { key: 'all', label: 'All', count: tabCounts.all },
@@ -335,7 +335,7 @@ export function CustomersClientPage() {
               setSegmentTab(tab.key);
               setCurrentPage(1);
             }}
-            className={`px-3 py-1.5 text-[13px] font-medium rounded-[6px] transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 text-[12px] sm:text-[13px] font-medium rounded-[6px] transition-colors whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
               segmentTab === tab.key
                 ? 'bg-[#6420AA] text-white'
                 : 'text-muted hover:text-ink hover:bg-canvas'
@@ -354,8 +354,8 @@ export function CustomersClientPage() {
       </div>
 
       {/* Search and Filters Bar */}
-      <div className="p-4 bg-card border border-border rounded-[8px] flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex-1 max-w-md">
+      <div className="p-3.5 sm:p-4 bg-card border border-border rounded-[8px] flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex-1 w-full md:max-w-md">
           <input
             type="text"
             value={search}
@@ -435,7 +435,7 @@ export function CustomersClientPage() {
           </div>
         ) : paginatedCustomers.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[14px] leading-[20px] border-collapse">
+            <table className="w-full min-w-[840px] text-left text-[13px] sm:text-[14px] leading-[20px] border-collapse">
               <thead className="bg-[#F1EFF8]/50 border-b border-border sticky top-0 z-10">
                 <tr className="h-10 text-[12px] text-muted font-medium select-none">
                   <th
@@ -612,7 +612,7 @@ export function CustomersClientPage() {
 
         {/* Pagination Bar */}
         {sortedCustomers.length > pageSize && (
-          <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted">
+          <div className="p-3 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-muted">
             <span>
               Showing {(currentPage - 1) * pageSize + 1}–
               {Math.min(currentPage * pageSize, sortedCustomers.length)} of{' '}
@@ -650,13 +650,13 @@ export function CustomersClientPage() {
           aria-modal="true"
         >
           <div
-            className="fixed inset-y-0 right-0 max-w-md w-full bg-card border-l border-border shadow-xl flex flex-col justify-between"
+            className="fixed inset-y-0 right-0 max-w-full sm:max-w-md w-full bg-card border-l border-border shadow-xl flex flex-col justify-between"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drawer Header */}
-            <div className="p-5 border-b border-border flex items-center justify-between">
+            <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between">
               <div>
-                <h3 className="text-[18px] leading-[28px] font-semibold text-ink">
+                <h3 className="text-[16px] sm:text-[18px] leading-[24px] sm:leading-[28px] font-semibold text-ink">
                   Customer Profile
                 </h3>
                 <p className="text-[12px] text-muted">
@@ -675,7 +675,7 @@ export function CustomersClientPage() {
             </div>
 
             {/* Drawer Content */}
-            <div className="p-5 flex-1 overflow-y-auto space-y-6">
+            <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4 sm:space-y-6">
               {detailLoading || !detail ? (
                 <div className="py-12 text-center text-xs text-muted">
                   Loading customer history...

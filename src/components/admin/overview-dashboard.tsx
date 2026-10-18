@@ -109,20 +109,20 @@ export function OverviewClientDashboard({
     totalSegmentSum > 0 ? (segments.prospect / totalSegmentSum) * 100 : 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <nav className="text-[12px] text-muted mb-1" aria-label="Breadcrumb">
             <span>Admin</span> / <span className="text-ink">Overview</span>
           </nav>
-          <h1 className="text-[28px] leading-[36px] font-semibold text-ink tracking-tight font-display">
+          <h1 className="text-[22px] sm:text-[28px] leading-[28px] sm:leading-[36px] font-semibold text-ink tracking-tight font-display">
             Overview
           </h1>
         </div>
 
         {/* Date Range Selector */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex p-1 bg-card border border-border rounded-[6px]">
             {(
               [
@@ -134,7 +134,7 @@ export function OverviewClientDashboard({
               <button
                 key={tab.value}
                 onClick={() => setDateRange(tab.value)}
-                className={`px-3 py-1 text-[13px] font-medium rounded-[4px] transition-colors ${
+                className={`px-2.5 sm:px-3 py-1 text-[12px] sm:text-[13px] font-medium rounded-[4px] transition-colors ${
                   dateRange === tab.value
                     ? 'bg-[#6420AA] text-white'
                     : 'text-muted hover:text-ink'
@@ -147,7 +147,7 @@ export function OverviewClientDashboard({
 
           <Link
             href="/admin/preorders"
-            className="px-3.5 py-1.5 bg-card border border-border text-ink hover:bg-canvas text-[13px] font-medium rounded-[6px] no-underline transition-colors"
+            className="px-3 sm:px-3.5 py-1.5 bg-card border border-border text-ink hover:bg-canvas text-[12px] sm:text-[13px] font-medium rounded-[6px] no-underline transition-colors shrink-0"
           >
             Manage orders
           </Link>
@@ -155,50 +155,50 @@ export function OverviewClientDashboard({
       </div>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Registered Users */}
-        <div className="p-6 bg-card border border-border rounded-[8px] space-y-2">
-          <p className="text-[13px] leading-[18px] font-medium text-muted">
+        <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] space-y-1.5 sm:space-y-2">
+          <p className="text-[12px] sm:text-[13px] leading-[18px] font-medium text-muted">
             Registered users
           </p>
-          <p className="text-[32px] leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
+          <p className="text-[26px] sm:text-[32px] leading-tight sm:leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
             {metrics.totalRegistered}
           </p>
-          <p className="text-[12px] leading-[16px] text-muted">
+          <p className="text-[11px] sm:text-[12px] leading-[16px] text-muted">
             Total registered customer accounts
           </p>
         </div>
 
         {/* Confirmed Buyers */}
-        <div className="p-6 bg-card border border-border rounded-[8px] space-y-2">
-          <p className="text-[13px] leading-[18px] font-medium text-muted">
+        <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] space-y-1.5 sm:space-y-2">
+          <p className="text-[12px] sm:text-[13px] leading-[18px] font-medium text-muted">
             Confirmed buyers
           </p>
-          <p className="text-[32px] leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
+          <p className="text-[26px] sm:text-[32px] leading-tight sm:leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
             {metrics.confirmedBuyers}
           </p>
-          <p className="text-[12px] leading-[16px] text-muted">
+          <p className="text-[11px] sm:text-[12px] leading-[16px] text-muted">
             of {metrics.totalRegistered} registered
           </p>
         </div>
 
         {/* Deposits Collected */}
-        <div className="p-6 bg-card border border-border rounded-[8px] space-y-2">
-          <p className="text-[13px] leading-[18px] font-medium text-muted">
+        <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] space-y-1.5 sm:space-y-2">
+          <p className="text-[12px] sm:text-[13px] leading-[18px] font-medium text-muted">
             Deposits collected
           </p>
-          <p className="text-[32px] leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
+          <p className="text-[26px] sm:text-[32px] leading-tight sm:leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
             {formatPrice(metrics.totalDepositCollected)}
           </p>
-          <p className="text-[12px] leading-[16px] text-muted">
+          <p className="text-[11px] sm:text-[12px] leading-[16px] text-muted">
             Verified payments only
           </p>
         </div>
 
         {/* Conversion Rate */}
-        <div className="p-6 bg-card border border-border rounded-[8px] space-y-2 relative">
+        <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] space-y-1.5 sm:space-y-2 relative">
           <div className="flex items-center justify-between">
-            <p className="text-[13px] leading-[18px] font-medium text-muted">
+            <p className="text-[12px] sm:text-[13px] leading-[18px] font-medium text-muted">
               Conversion
             </p>
             <button
@@ -217,22 +217,22 @@ export function OverviewClientDashboard({
           </div>
 
           {showFormulaTooltip && (
-            <div className="absolute right-6 top-12 z-20 p-2.5 bg-ink text-white text-[11px] rounded-[4px] shadow-lg max-w-[200px] leading-relaxed">
+            <div className="absolute right-4 sm:right-6 top-12 z-20 p-2.5 bg-ink text-white text-[11px] rounded-[4px] shadow-lg max-w-[200px] leading-relaxed">
               Formula: (Confirmed buyers / Registered users) × 100
             </div>
           )}
 
-          <p className="text-[32px] leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
+          <p className="text-[26px] sm:text-[32px] leading-tight sm:leading-[40px] font-semibold text-ink [font-variant-numeric:tabular-nums]">
             {metrics.conversionRate}%
           </p>
-          <p className="text-[12px] leading-[16px] text-muted">
+          <p className="text-[11px] sm:text-[12px] leading-[16px] text-muted">
             Confirmed buyers / registered users
           </p>
         </div>
       </div>
 
       {/* Segment Bar */}
-      <div className="p-6 bg-card border border-border rounded-[8px] space-y-4">
+      <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-[18px] leading-[28px] font-semibold text-ink">
@@ -304,11 +304,11 @@ export function OverviewClientDashboard({
       </div>
 
       {/* 30-Day Activity Chart & Needs Attention Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Activity Timeline */}
-        <div className="p-6 bg-card border border-border rounded-[8px] lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[18px] leading-[28px] font-semibold text-ink">
+        <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] lg:col-span-2 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h2 className="text-[16px] sm:text-[18px] leading-[24px] sm:leading-[28px] font-semibold text-ink">
               Sign-ups and paid orders ({dateRange === '7d' ? 'Last 7 days' : 'Last 30 days'})
             </h2>
             <div className="flex items-center gap-3 text-[12px] text-muted">
@@ -386,22 +386,22 @@ export function OverviewClientDashboard({
         </div>
 
         {/* Needs Attention Panel */}
-        <div className="p-6 bg-card border border-border rounded-[8px] space-y-4">
-          <h2 className="text-[18px] leading-[28px] font-semibold text-ink">
+        <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] space-y-4">
+          <h2 className="text-[16px] sm:text-[18px] leading-[24px] sm:leading-[28px] font-semibold text-ink">
             Needs attention
           </h2>
           <p className="text-[12px] leading-[16px] text-muted">
             Operational alerts and pending customer records
           </p>
 
-          <div className="space-y-3">
-            <div className="p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between">
+          <div className="space-y-2.5 sm:space-y-3">
+            <div className="p-2.5 sm:p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between gap-2">
               <div>
                 <p className="text-[13px] font-medium text-ink">Failed payments (7d)</p>
                 <p className="text-[11px] text-muted">Gateway rejects requiring outreach</p>
               </div>
               <span
-                className={`text-[12px] font-semibold px-2 py-0.5 rounded-[4px] ${
+                className={`text-[12px] font-semibold px-2 py-0.5 rounded-[4px] shrink-0 ${
                   attentionItems.failedPayments7d > 0
                     ? 'bg-[#FDECEA] text-[#B42318] border border-[#FECDCA]'
                     : 'bg-[#E6F4EE] text-[#12805C]'
@@ -411,13 +411,13 @@ export function OverviewClientDashboard({
               </span>
             </div>
 
-            <div className="p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between">
+            <div className="p-2.5 sm:p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between gap-2">
               <div>
                 <p className="text-[13px] font-medium text-ink">Pending &gt; 24h</p>
                 <p className="text-[11px] text-muted">Created checkouts without completion</p>
               </div>
               <span
-                className={`text-[12px] font-semibold px-2 py-0.5 rounded-[4px] ${
+                className={`text-[12px] font-semibold px-2 py-0.5 rounded-[4px] shrink-0 ${
                   attentionItems.pendingPaymentsOver24h > 0
                     ? 'bg-[#FFF3D6] text-[#8A5A00] border border-[#FEE4A6]'
                     : 'bg-[#F1EFF8] text-[#5B5670]'
@@ -427,22 +427,22 @@ export function OverviewClientDashboard({
               </span>
             </div>
 
-            <div className="p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between">
+            <div className="p-2.5 sm:p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between gap-2">
               <div>
                 <p className="text-[13px] font-medium text-ink">Paid orders to process</p>
                 <p className="text-[11px] text-muted">Confirmed orders awaiting status updates</p>
               </div>
-              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-[4px] bg-[#E6F4EE] text-[#12805C]">
+              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-[4px] bg-[#E6F4EE] text-[#12805C] shrink-0">
                 {attentionItems.paidAwaitingUpdate}
               </span>
             </div>
 
-            <div className="p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between">
+            <div className="p-2.5 sm:p-3 rounded-[6px] border border-border bg-canvas flex items-center justify-between gap-2">
               <div>
                 <p className="text-[13px] font-medium text-ink">Missing phone numbers</p>
                 <p className="text-[11px] text-muted">Registered accounts without phone</p>
               </div>
-              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-[4px] bg-[#F1EFF8] text-[#5B5670]">
+              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-[4px] bg-[#F1EFF8] text-[#5B5670] shrink-0">
                 {attentionItems.signupsWithoutPhone}
               </span>
             </div>
@@ -451,10 +451,10 @@ export function OverviewClientDashboard({
       </div>
 
       {/* Recent Pre-orders Table */}
-      <div className="p-6 bg-card border border-border rounded-[8px] space-y-4">
+      <div className="p-4 sm:p-6 bg-card border border-border rounded-[8px] space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-[18px] leading-[28px] font-semibold text-ink">
+            <h2 className="text-[16px] sm:text-[18px] leading-[24px] sm:leading-[28px] font-semibold text-ink">
               Recent pre-orders
             </h2>
             <p className="text-[12px] leading-[16px] text-muted">
@@ -463,7 +463,7 @@ export function OverviewClientDashboard({
           </div>
           <Link
             href="/admin/preorders"
-            className="text-[13px] font-medium text-[#6420AA] hover:underline"
+            className="text-[13px] font-medium text-[#6420AA] hover:underline shrink-0"
           >
             View all ({metrics.totalOrders}) →
           </Link>
@@ -471,7 +471,7 @@ export function OverviewClientDashboard({
 
         {recentPreorders.length > 0 ? (
           <div className="overflow-x-auto border border-border rounded-[6px]">
-            <table className="w-full text-left text-[14px] leading-[20px] border-collapse">
+            <table className="w-full min-w-[620px] text-left text-[13px] sm:text-[14px] leading-[20px] border-collapse">
               <thead className="bg-[#F1EFF8]/50 border-b border-border sticky top-0">
                 <tr className="h-10 text-[12px] text-muted font-medium">
                   <th className="px-4">Order</th>

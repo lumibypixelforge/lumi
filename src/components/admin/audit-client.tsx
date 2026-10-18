@@ -136,13 +136,13 @@ export function AuditClientPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <nav className="text-[12px] text-muted mb-1" aria-label="Breadcrumb">
             <span>Admin</span> / <span className="text-ink">Audit log</span>
           </nav>
           <div className="flex items-center gap-2">
-            <h1 className="text-[28px] leading-[36px] font-semibold text-ink tracking-tight font-display">
+            <h1 className="text-[22px] sm:text-[28px] leading-[28px] sm:leading-[36px] font-semibold text-ink tracking-tight font-display">
               Audit log
             </h1>
             <span className="text-xs font-mono text-muted self-center">
@@ -156,18 +156,18 @@ export function AuditClientPage() {
 
         <button
           onClick={fetchLogs}
-          className="px-3.5 py-1.5 bg-card border border-border text-ink hover:bg-canvas text-[13px] font-medium rounded-[6px] transition-colors self-start sm:self-auto"
+          className="px-3.5 py-1.5 bg-card border border-border text-ink hover:bg-canvas text-[12px] sm:text-[13px] font-medium rounded-[6px] transition-colors self-start sm:self-auto shrink-0"
         >
           Refresh log
         </button>
       </div>
 
       {/* Filters Bar */}
-      <div className="p-4 bg-card border border-border rounded-[8px] flex flex-wrap items-center gap-3">
+      <div className="p-3.5 sm:p-4 bg-card border border-border rounded-[8px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
         <select
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
-          className="px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
+          className="w-full px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
           aria-label="Filter by action"
         >
           <option value="all">All actions</option>
@@ -181,7 +181,7 @@ export function AuditClientPage() {
         <select
           value={entityFilter}
           onChange={(e) => setEntityFilter(e.target.value)}
-          className="px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
+          className="w-full px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
           aria-label="Filter by entity"
         >
           <option value="all">All entities</option>
@@ -195,7 +195,7 @@ export function AuditClientPage() {
         <select
           value={actorFilter}
           onChange={(e) => setActorFilter(e.target.value)}
-          className="px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
+          className="w-full px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
           aria-label="Filter by actor"
         >
           <option value="all">All actors</option>
@@ -209,7 +209,7 @@ export function AuditClientPage() {
         <select
           value={dateFilter}
           onChange={(e) => setDateFilter(e.target.value as 'all' | '7d' | '30d')}
-          className="px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
+          className="w-full px-2.5 py-1.5 text-[12px] bg-canvas border border-border rounded-[6px] text-ink focus:outline-none"
           aria-label="Filter by date range"
         >
           <option value="all">Time: All history</option>
@@ -227,7 +227,7 @@ export function AuditClientPage() {
           </div>
         ) : filteredLogs.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[14px] leading-[20px] border-collapse">
+            <table className="w-full min-w-[720px] text-left text-[13px] sm:text-[14px] leading-[20px] border-collapse">
               <thead className="bg-[#F1EFF8]/50 border-b border-border sticky top-0 z-10">
                 <tr className="h-10 text-[12px] text-muted font-medium select-none">
                   <th className="px-4">Time</th>

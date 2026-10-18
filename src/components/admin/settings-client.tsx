@@ -714,10 +714,10 @@ export function SettingsClientPage() {
 
       {/* Sticky Unsaved Changes Bar */}
       {hasUnsavedChanges && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-lg p-4">
-          <div className="max-w-[1280px] mx-auto flex items-center justify-between gap-4">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-lg p-3 sm:p-4">
+          <div className="max-w-[1280px] mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#8A5A00] animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-[#8A5A00] animate-pulse shrink-0" />
               <span className="text-xs font-medium text-ink">
                 You have {changedFields.length} unsaved parameter change{changedFields.length > 1 ? 's' : ''}
               </span>
@@ -728,7 +728,7 @@ export function SettingsClientPage() {
                 type="button"
                 onClick={() => setFormState(initialState)}
                 disabled={saving}
-                className="px-3 py-1.5 text-xs text-muted hover:text-ink font-medium transition-colors"
+                className="flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 text-xs text-muted hover:text-ink font-medium transition-colors"
               >
                 Cancel
               </button>
@@ -736,7 +736,7 @@ export function SettingsClientPage() {
                 type="button"
                 onClick={() => setShowConfirmModal(true)}
                 disabled={saving}
-                className="px-4 py-1.5 bg-[#6420AA] hover:bg-[#52198D] text-white text-xs font-medium rounded-[6px] transition-colors"
+                className="flex-1 sm:flex-initial px-4 py-2 sm:py-1.5 bg-[#6420AA] hover:bg-[#52198D] text-white text-xs font-medium rounded-[6px] transition-colors"
               >
                 Review & Save changes
               </button>
@@ -748,13 +748,13 @@ export function SettingsClientPage() {
       {/* Review Diff Confirmation Modal */}
       {showConfirmModal && (
         <div
-          className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-[2px] flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="bg-card border border-border rounded-[8px] max-w-lg w-full p-6 shadow-xl space-y-4">
+          <div className="bg-card border border-border rounded-[8px] max-w-lg w-full p-4 sm:p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div>
-              <h3 className="text-[18px] leading-[28px] font-semibold text-ink">
+              <h3 className="text-[16px] sm:text-[18px] leading-[24px] sm:leading-[28px] font-semibold text-ink">
                 Confirm Settings Modification
               </h3>
               <p className="text-[12px] text-muted mt-1">
@@ -768,8 +768,8 @@ export function SettingsClientPage() {
               </div>
             )}
 
-            <div className="border border-border rounded-[6px] overflow-hidden bg-canvas">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="border border-border rounded-[6px] overflow-x-auto bg-canvas">
+              <table className="w-full min-w-[320px] text-left text-xs border-collapse">
                 <thead className="bg-[#F1EFF8]/50 border-b border-border">
                   <tr className="h-8 text-[11px] text-muted font-medium">
                     <th className="px-3">Field</th>

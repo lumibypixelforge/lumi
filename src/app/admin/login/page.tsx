@@ -93,7 +93,7 @@ function AdminLoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F6FB] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#F7F6FB] flex flex-col justify-center px-4 py-8 sm:py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Admin Header */}
         <div className="text-center">
@@ -114,7 +114,7 @@ function AdminLoginForm() {
         </div>
 
         {/* Card Box */}
-        <div className="mt-8 bg-card py-8 px-6 border border-border rounded-[8px] sm:px-10 shadow-none">
+        <div className="mt-6 sm:mt-8 bg-card py-6 px-4 sm:py-8 sm:px-10 border border-border rounded-[8px] shadow-none">
           {errorMsg && (
             <div
               className="mb-5 p-3 rounded-[6px] bg-[#FDECEA] border border-[#FECDCA] text-xs text-[#B42318] leading-relaxed"
@@ -141,7 +141,7 @@ function AdminLoginForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@lumi.com"
-                  className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-[6px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#6420AA]"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-canvas border border-border rounded-[6px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#6420AA]"
                 />
               </div>
 
@@ -160,7 +160,7 @@ function AdminLoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-[6px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#6420AA]"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-canvas border border-border rounded-[6px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#6420AA]"
                 />
               </div>
 
@@ -268,7 +268,7 @@ function AdminLoginForm() {
                   <label className="block text-[11px] text-muted mb-1">
                     Manual entry secret key
                   </label>
-                  <code className="block p-2 bg-canvas border border-border rounded-[4px] text-[12px] font-mono select-all text-center text-ink">
+                  <code className="block p-2 bg-canvas border border-border rounded-[4px] text-[11px] sm:text-[12px] font-mono select-all text-center text-ink break-all">
                     {totpSecret}
                   </code>
                 </div>
