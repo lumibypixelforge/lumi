@@ -1,19 +1,17 @@
 'use client';
 
 /**
- * LUMI 3D Scene Choreographer — Revision 3 (Smooth & Glitch-Free)
+ * LUMI 3D Scene Choreographer — Mobile Robot Dock & Desktop Stage
  *
  * Implements:
- * 1. Shortest-path angle interpolation (lerpAngle) eliminating all 360° spin glitches.
- * 2. Exponentially smoothed velocity tracking (smoothedVx) for calm, non-jittery anticipation & banking.
- * 3. 35% dwell -> 30% travel with smootherstep -> 35% dwell between sections.
- * 4. Critically damped smoothing with delta clamped to 1/30s.
- * 5. Single R3F loop reading mutable scrollStore ref with ZERO React re-renders.
- * 6. Hero intro sequence (smooth roll-in -> full lap around ring -> glances & excited flashes -> hop -> settle happy).
- * 7. Interactive cursor tracking: head turns up to 24° to follow cursor, body follows at 20% delay.
- * 8. Gaze weights per chapter.
- * 9. Natural eye behaviors: blinks every 3-6s (10% double blinks), micro-saccades, breathing scale.
- * 10. Anti-overlap guarantee: robot waypoint kept at x = 0.95 desktop, clear of chapter indicator at all widths.
+ * 1. Mobile Robot Dock (under 768px): fixed under header, height clamp(180px, 28svh, 260px).
+ *    In the dock, x: 0 (no sideways travel), robot scale chosen from dock height with >8px margin,
+ *    never cropped, complete wheels & floor shadow visible.
+ * 2. Hero exception: 46svh above headline at scrollY = 0, smoothly damping into the dock as user scrolls.
+ * 3. Dock background follows chapter color: dynamic cross-fade to dark #0E0B1A for Chapter 07.
+ * 4. Touch behavior: no cursor tracking. Autonomous glances every 5-8s. Tap on robot makes it excited and hop.
+ * 5. Performance: DPR capped at 1.5 on mobile, debounced resize ignoring height changes under 100px (iOS Safari address bar), loop paused when tab hidden.
+ * 6. Desktop layout & choreography completely preserved for >=768px and landscape phones <500px.
  */
 
 import React, { useRef, useState, useEffect, useMemo } from 'react';
@@ -24,7 +22,7 @@ import { LumiGLBModel, type LumiSceneAnimationData } from './lumi-custom-model';
 import { type LumiMood } from './eye-engine';
 import { scrollStore } from '@/components/providers/smooth-scroll';
 
-// Eagerly preload GLTF model to prevent any render latency
+// Eagerly preload GLTF model to prevent render latency
 useGLTF.preload('/models/lumi.glb');
 
 export interface LumiSceneProps {
@@ -51,7 +49,7 @@ interface ChapterKeyframe {
   mood: LumiMood;
 }
 
-// ─── Mathematical Angle Utilities (Eliminates Spinning Glitches) ──────
+// ─── Mathematical Angle Utilities ────────────────────────────────────
 
 function normalizeAngle(a: number): number {
   return THREE.MathUtils.euclideanModulo(a + Math.PI, Math.PI * 2) - Math.PI;
@@ -68,6 +66,7 @@ function lerpAngle(from: number, to: number, t: number): number {
 
 // ─── Keyframes per Chapter (1 to 9) ──────────────────────────────────
 
+// Desktop (768px+ & landscape <500px): alternating 12-column stage choreography
 const DESKTOP_KEYFRAMES: Record<number, ChapterKeyframe> = {
   1: {
     x: 0.75, y: 0.0, z: 0,
@@ -152,16 +151,17 @@ const DESKTOP_KEYFRAMES: Record<number, ChapterKeyframe> = {
   },
 };
 
+// Mobile Robot Dock (<768px): No sideways travel (x: 0), centered in dock (y: 0.0), scale fits dock height
 const MOBILE_KEYFRAMES: Record<number, ChapterKeyframe> = {
-  1: { ...DESKTOP_KEYFRAMES[1], x: 0, y: 0.44, z: -0.08, scale: 0.46 },
-  2: { ...DESKTOP_KEYFRAMES[2], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: 0.20, headTurnY: 0.08 },
-  3: { ...DESKTOP_KEYFRAMES[3], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: -0.20, headTurnY: -0.08 },
-  4: { ...DESKTOP_KEYFRAMES[4], x: 0, y: 0.44, z: -0.08, scale: 0.44, headTiltX: 0.06 },
-  5: { ...DESKTOP_KEYFRAMES[5], x: 0, y: 0.40, z: 0.02, scale: 0.50, headTiltX: -0.02 },
-  6: { ...DESKTOP_KEYFRAMES[6], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: 0.15 },
-  7: { ...DESKTOP_KEYFRAMES[7], x: 0, y: 0.44, z: -0.08, scale: 0.44, yaw: -0.25 },
-  8: { ...DESKTOP_KEYFRAMES[8], x: 0, y: 0.46, z: -0.12, scale: 0.38 },
-  9: { ...DESKTOP_KEYFRAMES[9], x: 0, y: 0.48, z: -0.16, scale: 0.34 },
+  1: { ...DESKTOP_KEYFRAMES[1], x: 0, y: 0.0, z: 0, scale: 1.10 },
+  2: { ...DESKTOP_KEYFRAMES[2], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: 0.20, headTurnY: 0.10 },
+  3: { ...DESKTOP_KEYFRAMES[3], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: -0.20, headTurnY: -0.10 },
+  4: { ...DESKTOP_KEYFRAMES[4], x: 0, y: 0.0, z: 0, scale: 1.02, headTiltX: 0.06 },
+  5: { ...DESKTOP_KEYFRAMES[5], x: 0, y: 0.0, z: 0, scale: 1.06, headTiltX: -0.02 },
+  6: { ...DESKTOP_KEYFRAMES[6], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: 0.15 },
+  7: { ...DESKTOP_KEYFRAMES[7], x: 0, y: 0.0, z: 0, scale: 1.02, yaw: -0.25, headTurnY: -0.08 },
+  8: { ...DESKTOP_KEYFRAMES[8], x: 0, y: 0.0, z: 0, scale: 0.98 },
+  9: { ...DESKTOP_KEYFRAMES[9], x: 0, y: 0.0, z: 0, scale: 0.98 },
 };
 
 const TABLET_KEYFRAMES: Record<number, ChapterKeyframe> = {
@@ -177,13 +177,13 @@ const TABLET_KEYFRAMES: Record<number, ChapterKeyframe> = {
 };
 
 const GAZE_WEIGHTS: Record<number, number> = {
-  1: 1.0, // Hero
+  1: 1.0,
   2: 0.5,
   3: 0.5,
   4: 0.5,
   5: 0.2,
   6: 0.3,
-  7: 0.5, // Power
+  7: 0.5,
   8: 0.4,
   9: 0.6,
 };
@@ -224,10 +224,7 @@ function HeroFloorRing({
   );
 }
 
-// ─── Professional Ground Shadow Component ─────────────────────────────
-// Permanent, studio-grade contact & ambient ground shadow across all 9 chapters.
-// Dual tire contact patches + soft body ambient shadow.
-// Stays grounded on the floor when LUMI hops, soft-fading with elevation.
+// ─── Ground Shadow Component ──────────────────────────────────────────
 
 interface LumiGroundShadowProps {
   shadowGroupRef: React.RefObject<THREE.Group | null>;
@@ -310,11 +307,11 @@ function LumiSceneContent({
   const curPos = useRef(new THREE.Vector3(initialStageX, 0, 0));
   const curYaw = useRef(0);
   const curRoll = useRef(0);
-  const curScale = useRef(1.15);
+  const curScale = useRef(1.10);
   const curHeadTiltX = useRef(0);
   const curHeadTurnY = useRef(0);
 
-  // Filtered velocity tracking (eliminates twitching/glitching)
+  // Velocity tracking
   const prevTargetX = useRef(initialStageX);
   const smoothedVx = useRef(0);
 
@@ -322,15 +319,18 @@ function LumiSceneContent({
   const wheelSpinL = useRef(0);
   const wheelSpinR = useRef(0);
 
-  // Cached Section Offsets (updated via ResizeObserver)
+  // Cached Section Offsets
   const sectionOffsetsRef = useRef<number[]>([0, 900, 1800, 2700, 3600, 4500, 5400, 6300, 7200]);
+
+  // Tab hidden pause state
+  const isTabHiddenRef = useRef(false);
 
   // Dynamic Mood & Eye State
   const currentChapterFloat = useRef(1.0);
   const activeMoodRef = useRef<LumiMood>('happy');
   const userMoodOverrideRef = useRef<LumiMood | null>(null);
 
-  // Live 60fps Animation Data container shared with LumiGLBModel
+  // Live Animation Data container shared with LumiGLBModel
   const animDataRef = useRef<LumiSceneAnimationData>({
     mood: 'happy',
     eyeLookX: 0,
@@ -414,12 +414,19 @@ function LumiSceneContent({
   const isDoubleBlinkRef = useRef(false);
   const doubleBlinkDoneRef = useRef(false);
 
-  // Micro-saccades (tiny gaze shifts every 0.8 to 2.2s)
+  // Autonomous Glance System (5 to 8s interval)
+  const glanceTimerRef = useRef(0);
+  const nextGlanceAtRef = useRef(5.5);
+  const isGlancingRef = useRef(false);
+  const glanceProgressRef = useRef(0);
+  const glanceTargetRef = useRef({ x: 0, y: 0 });
+
+  // Micro-saccades
   const saccadeTimerRef = useRef(0);
   const nextSaccadeAtRef = useRef(1.4);
   const saccadeOffsetRef = useRef({ x: 0, y: 0 });
 
-  // Cursor tracking state
+  // Desktop cursor tracking (disabled on touch mobile)
   const mousePosRef = useRef({ nx: 0, ny: 0, isInside: false, lastMoveTime: 0 });
   const isHoveringCtaRef = useRef(false);
   const isHoveringLumiRef = useRef(false);
@@ -435,6 +442,15 @@ function LumiSceneContent({
   const [introActive, setIntroActive] = useState(false);
   const introStartTimeRef = useRef<number | null>(null);
   const introFinishedRef = useRef(false);
+
+  // Check tab visibility
+  useEffect(() => {
+    const handleVis = () => {
+      isTabHiddenRef.current = document.hidden;
+    };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => document.removeEventListener('visibilitychange', handleVis);
+  }, []);
 
   // Check session storage for intro on mount
   useEffect(() => {
@@ -453,11 +469,14 @@ function LumiSceneContent({
     }
   }, []);
 
-  // Cache section anchors via ResizeObserver
+  // Cache section anchors with debounce, ignoring iOS Safari address bar jitter (<100px height changes)
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
     const chapterIds = ['hero', 'meet', 'see', 'talk', 'express', 'drive', 'power', 'specs', 'preorder'];
+    let lastW = window.innerWidth;
+    let lastH = window.innerHeight;
+    let debounceTimer: NodeJS.Timeout | null = null;
 
     const updateAnchors = () => {
       const scrollY = window.scrollY;
@@ -476,24 +495,35 @@ function LumiSceneContent({
 
     updateAnchors();
 
-    const resizeObserver = new ResizeObserver(() => {
-      updateAnchors();
-    });
+    const handleResize = () => {
+      const newW = window.innerWidth;
+      const newH = window.innerHeight;
+      // Ignore mobile address bar expansion/collapse
+      if (newW === lastW && Math.abs(newH - lastH) < 100) {
+        return;
+      }
+      lastW = newW;
+      lastH = newH;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(updateAnchors, 200);
+    };
 
-    resizeObserver.observe(document.body);
-    window.addEventListener('resize', updateAnchors);
+    window.addEventListener('resize', handleResize, { passive: true });
 
     return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', updateAnchors);
+      window.removeEventListener('resize', handleResize);
+      if (debounceTimer) clearTimeout(debounceTimer);
     };
   }, []);
 
-  // Global mouse tracking and custom events
+  // Pointer tracking: Mouse ONLY on desktop; touch cursor tracking disabled on mobile
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const onMouseMove = (e: MouseEvent) => {
+      // Ignore simulated mouse events on touch devices
+      if ('ontouchstart' in window && window.innerWidth < 768) return;
+
       const nx = (e.clientX / window.innerWidth) * 2 - 1;
       const ny = (e.clientY / window.innerHeight) * 2 - 1;
       mousePosRef.current = {
@@ -503,21 +533,6 @@ function LumiSceneContent({
         lastMoveTime: performance.now(),
       };
       window.dispatchEvent(new CustomEvent('lumi:cursor-moved'));
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches && e.touches.length > 0) {
-        const touch = e.touches[0];
-        const nx = (touch.clientX / window.innerWidth) * 2 - 1;
-        const ny = (touch.clientY / window.innerHeight) * 2 - 1;
-        mousePosRef.current = {
-          nx,
-          ny,
-          isInside: true,
-          lastMoveTime: performance.now(),
-        };
-        window.dispatchEvent(new CustomEvent('lumi:cursor-moved'));
-      }
     };
 
     const onMouseLeave = () => {
@@ -533,20 +548,30 @@ function LumiSceneContent({
       isHoveringCtaRef.current = false;
     };
 
+    // Tap on robot event
+    const onTapRobot = () => {
+      hopStartTimeRef.current = performance.now();
+      userMoodOverrideRef.current = 'excited';
+      activeMoodRef.current = 'excited';
+      if (animDataRef.current) {
+        animDataRef.current.mood = 'excited';
+      }
+      isBlinkingRef.current = true;
+      blinkProgressRef.current = 0;
+    };
+
     window.addEventListener('mousemove', onMouseMove, { passive: true });
-    window.addEventListener('touchstart', onTouchMove, { passive: true });
-    window.addEventListener('touchmove', onTouchMove, { passive: true });
     window.addEventListener('mouseleave', onMouseLeave);
     window.addEventListener('lumi:hover-cta', onHoverCTA);
     window.addEventListener('lumi:unhover-cta', onUnhoverCTA);
+    window.addEventListener('lumi:tap-robot', onTapRobot);
 
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('touchstart', onTouchMove);
-      window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('mouseleave', onMouseLeave);
       window.removeEventListener('lumi:hover-cta', onHoverCTA);
       window.removeEventListener('lumi:unhover-cta', onUnhoverCTA);
+      window.removeEventListener('lumi:tap-robot', onTapRobot);
     };
   }, []);
 
@@ -599,7 +624,7 @@ function LumiSceneContent({
 
   // ─── Main Animation Loop (Single R3F loop) ──────────────────────────
   useFrame((state, delta) => {
-    if (!modelGroupRef.current) return;
+    if (isTabHiddenRef.current || !modelGroupRef.current) return;
 
     const t = state.clock.elapsedTime;
     const safeDelta = Math.min(delta, 1 / 30);
@@ -613,8 +638,8 @@ function LumiSceneContent({
       const winHeight = window.innerHeight;
       const distToBottom = docHeight - (scrollY + winHeight);
 
-      if (distToBottom < 800) {
-        footerFade = Math.max(0, (distToBottom - 380) / 420);
+      if (distToBottom < 700) {
+        footerFade = Math.max(0, (distToBottom - 300) / 400);
       }
       fadeOpacityRef.current = footerFade;
       modelGroupRef.current.visible = footerFade > 0.005;
@@ -683,20 +708,37 @@ function LumiSceneContent({
       directionalLightRef.current.intensity = THREE.MathUtils.lerp(1.1, 0.6, bgDarkInt);
     }
 
-    // ─── 4. Filtered Velocity & Non-Jittery Vehicle Dynamics ───
+    // ─── 3B. Dynamic Mobile Dock Height & Dock Background Cross-fade ───
+    if (isMobile && typeof window !== 'undefined') {
+      // 1. Cross-fade dock background to match chapter (dark for Chapter 07, light for others)
+      const r = Math.round(247 + (14 - 247) * bgDarkInt);
+      const g = Math.round(246 + (11 - 246) * bgDarkInt);
+      const b = Math.round(251 + (26 - 251) * bgDarkInt);
+      document.documentElement.style.setProperty('--dock-bg', `rgb(${r}, ${g}, ${b})`);
+      document.documentElement.style.setProperty('--dock-border', bgDarkInt > 0.5 ? 'rgba(255,255,255,0.12)' : '#E2E0EA');
+
+      // 2. Hero exception: large dock (46svh) smoothly damping into standard dock (28svh)
+      const svh = window.innerHeight;
+      const heroDockH = Math.min(380, Math.max(260, svh * 0.46));
+      const standardDockH = Math.min(260, Math.max(180, svh * 0.28));
+      const heroScrollDist = Math.max(1, svh * 0.45);
+      const heroP = Math.min(1, Math.max(0, scrollY / heroScrollDist));
+      const smoothP = heroP * heroP * (3 - 2 * heroP);
+      const currentDockH = heroDockH + (standardDockH - heroDockH) * smoothP;
+      document.documentElement.style.setProperty('--current-dock-h', `${Math.round(currentDockH)}px`);
+    }
+
+    // ─── 4. Filtered Velocity & Non-Jittery Dynamics ───
     const rawVx = (targetX - prevTargetX.current) / Math.max(safeDelta, 0.001);
     prevTargetX.current = targetX;
 
-    // Low-pass exponential velocity filter (smooths out frame-to-frame noise)
     smoothedVx.current = THREE.MathUtils.lerp(smoothedVx.current, rawVx, 1 - Math.exp(-6 * safeDelta));
 
-    // Anticipation: gently turn into travel direction, clamped to ~12 degrees
     let anticipationYaw = 0;
     if (Math.abs(smoothedVx.current) > 0.06) {
       anticipationYaw = THREE.MathUtils.clamp(smoothedVx.current * 0.12, -0.20, 0.20);
     }
 
-    // Banking: gently bank ~3 degrees into curves
     let bankingRoll = 0;
     if (Math.abs(smoothedVx.current) > 0.06) {
       bankingRoll = THREE.MathUtils.clamp(-smoothedVx.current * 0.024, -0.052, 0.052);
@@ -715,7 +757,7 @@ function LumiSceneContent({
       wheelSpinR.current = THREE.MathUtils.lerp(wheelSpinR.current, 0, 0.15);
     }
 
-    // ─── 5. Critically Damped Smoothing (lerpAngle for Yaw) ───
+    // ─── 5. Critically Damped Smoothing ───
     const posLerp = 1 - Math.exp(-7.5 * safeDelta);
     const rotLerp = 1 - Math.exp(-9.0 * safeDelta);
 
@@ -728,7 +770,7 @@ function LumiSceneContent({
     let finalRoll = THREE.MathUtils.lerp(curRoll.current, bankingRoll, rotLerp);
     let finalScale = THREE.MathUtils.lerp(curScale.current, targetScale, posLerp);
 
-    // ─── 6. Hop Animation (Squash & Stretch Physics) ───
+    // ─── 6. Hop Animation (Squash & Stretch) ───
     let hopOffsetY = 0;
     let squashScaleY = 1.0;
     let squashScaleXZ = 1.0;
@@ -737,28 +779,24 @@ function LumiSceneContent({
     if (hopElapsed >= 0 && hopElapsed < 0.52) {
       const p = hopElapsed / 0.52;
       if (p < 0.14) {
-        // Anticipation crouch / compression
         const u = p / 0.14;
         const c = Math.sin(u * Math.PI);
         squashScaleY = 1.0 - c * 0.08;
         squashScaleXZ = 1.0 + c * 0.05;
         hopOffsetY = -0.012 * c;
       } else if (p < 0.68) {
-        // Main jump arc & stretch
         const u = (p - 0.14) / 0.54;
         const jumpArc = Math.sin(u * Math.PI);
         hopOffsetY = jumpArc * 0.15;
         squashScaleY = 1.0 + jumpArc * 0.09;
         squashScaleXZ = 1.0 - jumpArc * 0.05;
       } else if (p < 0.86) {
-        // Impact landing compression
         const u = (p - 0.68) / 0.18;
         const landSquash = Math.sin(u * Math.PI);
         squashScaleY = 1.0 - landSquash * 0.08;
         squashScaleXZ = 1.0 + landSquash * 0.05;
         hopOffsetY = 0;
       } else {
-        // Rebound settling
         const u = (p - 0.86) / 0.14;
         squashScaleY = 1.0 + Math.sin(u * Math.PI) * 0.025;
         squashScaleXZ = 1.0 - Math.sin(u * Math.PI) * 0.015;
@@ -766,7 +804,7 @@ function LumiSceneContent({
       }
     }
 
-    // ─── 7. Hero Intro Sequence (Starts ON-STAGE immediately -> Showcase -> Settle) ───
+    // ─── 7. Hero Intro Sequence (Starts ON-STAGE immediately) ───
     let isIntroDriving = false;
     if (introActive && !introFinishedRef.current) {
       if (introStartTimeRef.current === null) {
@@ -774,11 +812,10 @@ function LumiSceneContent({
       }
       const introElapsed = t - introStartTimeRef.current;
       const heroStageX = isMobile ? 0 : 0.75;
-      const radiusX = isMobile ? 0.32 : 0.50;
-      const radiusZ = isMobile ? 0.20 : 0.30;
+      const radiusX = isMobile ? 0.18 : 0.50;
+      const radiusZ = isMobile ? 0.08 : 0.30;
 
       if (introElapsed < 0.6) {
-        // Frame 0 onwards: LUMI is RIGHT ON STAGE, 100% visible immediately!
         finalPosX = heroStageX;
         finalPosZ = 0;
         finalYaw = 0;
@@ -790,20 +827,17 @@ function LumiSceneContent({
         squashScaleY = 1.0 + Math.sin(u * Math.PI) * 0.04;
         squashScaleXZ = 1.0 - Math.sin(u * Math.PI) * 0.03;
       } else if (introElapsed < 3.2) {
-        // Smooth showcase lap around the stage ring starting and ending at center stage
         isIntroDriving = true;
-        const lapProgress = (introElapsed - 0.6) / 2.6; // 0 to 1
-        const lapAngle = lapProgress * Math.PI * 2; // 0 to 2PI
+        const lapProgress = (introElapsed - 0.6) / 2.6;
+        const lapAngle = lapProgress * Math.PI * 2;
 
-        // Smooth spiral outwards from center and back inwards to center
-        const envelope = Math.sin(lapProgress * Math.PI); // 0 at start, 1 in middle, 0 at end
+        const envelope = Math.sin(lapProgress * Math.PI);
         const currentRadiusX = radiusX * envelope;
         const currentRadiusZ = radiusZ * envelope;
 
         finalPosX = heroStageX + Math.sin(lapAngle) * currentRadiusX;
         finalPosZ = (1 - Math.cos(lapAngle)) * 0.5 * currentRadiusZ;
 
-        // Tangent direction along orbit, smoothly blending to facing front
         const tangentYaw = normalizeAngle(Math.cos(lapAngle) * 0.5);
         finalYaw = lerpAngle(curYaw.current, tangentYaw, 0.18);
         finalRoll = -0.03 * envelope;
@@ -819,7 +853,6 @@ function LumiSceneContent({
           window.dispatchEvent(new CustomEvent('lumi:highlight-label', { detail: 'drive' }));
         }
       } else if (introElapsed < 3.8) {
-        // Settled cleanly in center stage with an arrival nod
         finalPosX = heroStageX;
         finalPosZ = 0;
         finalYaw = lerpAngle(curYaw.current, 0, rotLerp);
@@ -841,24 +874,25 @@ function LumiSceneContent({
       }
     }
 
-    // ─── 8. Joy Lap (2-second circle drive on click) ───
+    // ─── 8. Joy Lap (2-second drive on click) ───
     const joyLapElapsed = (nowMs - joyLapStartTimeRef.current) / 1000;
     if (joyLapElapsed >= 0 && joyLapElapsed < 2.0) {
       const u = joyLapElapsed / 2.0;
       const angle = u * Math.PI * 2;
-      finalPosX += Math.cos(angle) * 0.24;
-      finalPosZ += Math.sin(angle) * 0.16;
+      const joyRadX = isMobile ? 0.12 : 0.24;
+      const joyRadZ = isMobile ? 0.08 : 0.16;
+      finalPosX += Math.cos(angle) * joyRadX;
+      finalPosZ += Math.sin(angle) * joyRadZ;
       finalYaw = lerpAngle(finalYaw, -angle, 0.2);
       wheelSpinL.current = 3.4;
       wheelSpinR.current = 4.4;
     }
 
-    // ─── 8B. Section Arrival Detection, Arrival Jumps & Content Inspection ───
+    // ─── 8B. Section Arrival Detection & Wheel Rolls ───
     const currentChapterInt = Math.max(1, Math.min(9, Math.round(floatChapter)));
     const dwellDist = Math.abs(floatChapter - currentChapterInt);
     const isSettledInChapter = dwellDist < 0.14;
 
-    // Re-arm arrival hops when moving away so LUMI greets on each revisit
     if (Math.abs(floatChapter - 2) > 0.85) {
       arrivalHopDoneRef.current[2] = false;
     }
@@ -870,7 +904,7 @@ function LumiSceneContent({
       activeSettledChapterRef.current = currentChapterInt;
       sectionArrivalMsRef.current = nowMs;
 
-      // Happy arrival jumps: Chapter 2 (Meet LUMI) and Chapter 5 (Expression)
+      // Small greeting wheel roll / hop on entering chapter
       if (
         (currentChapterInt === 2 || currentChapterInt === 5) &&
         !arrivalHopDoneRef.current[currentChapterInt]
@@ -881,23 +915,15 @@ function LumiSceneContent({
         blinkProgressRef.current = 0;
         isDoubleBlinkRef.current = true;
         doubleBlinkDoneRef.current = false;
-        if (currentChapterInt === 2) {
-          activeMoodRef.current = 'happy';
-        } else if (currentChapterInt === 5) {
-          activeMoodRef.current = 'excited';
-        }
       }
     }
 
-    // Content direction:
-    // Even chapters (2, 4, 6, 8): robot on left, content is on RIGHT (+1)
-    // Odd chapters (1, 3, 5, 7, 9): robot on right, content is on LEFT (-1)
+    // Content direction: desktop 2-col inspection
     const contentDirection = currentChapterInt % 2 === 0 ? 1 : -1;
     const timeSinceArrival = (nowMs - sectionArrivalMsRef.current) / 1000;
     let inspectWeight = 0;
 
-    // Look at section content for ~2.2 seconds upon entering section, then return to front & cursor
-    if (isSettledInChapter && timeSinceArrival < 2.2 && (!introActive || introFinishedRef.current)) {
+    if (!isMobile && isSettledInChapter && timeSinceArrival < 2.2 && (!introActive || introFinishedRef.current)) {
       if (timeSinceArrival < 0.35) {
         const u = timeSinceArrival / 0.35;
         inspectWeight = u * u * (3 - 2 * u);
@@ -909,52 +935,99 @@ function LumiSceneContent({
       }
     }
 
-    // ─── 9. Cursor Tracking & Smooth Head Reaction ───
-    const gazeWeight = GAZE_WEIGHTS[kLow] ?? 0.5;
-    const isPointerIdle = (nowMs - mousePosRef.current.lastMoveTime) > 5000;
+    // ─── 9. Autonomous Glances & Desktop Cursor Tracking ───
     let targetGazeX = 0;
     let targetGazeY = 0;
 
-    if (!mousePosRef.current.isInside) {
-      // Natural front-facing gaze with subtle resting breath
-      targetGazeX = Math.sin(t * 0.3) * 0.05;
-      targetGazeY = Math.cos(t * 0.25) * 0.03;
-    } else if (isPointerIdle) {
-      targetGazeX = Math.sin(t * 0.5) * 0.22;
-      targetGazeY = Math.cos(t * 0.35) * 0.10;
-    } else {
-      targetGazeX = mousePosRef.current.nx * gazeWeight;
-      targetGazeY = -mousePosRef.current.ny * gazeWeight;
-    }
+    if (isMobile) {
+      // Mobile: NO cursor tracking; autonomous glancing every 5 to 8 seconds
+      glanceTimerRef.current += safeDelta;
+      if (!isGlancingRef.current && glanceTimerRef.current >= nextGlanceAtRef.current) {
+        isGlancingRef.current = true;
+        glanceProgressRef.current = 0;
+        glanceTimerRef.current = 0;
+        nextGlanceAtRef.current = 5.0 + Math.random() * 3.0; // 5 to 8s
+        const dir = Math.random() > 0.5 ? 1 : -1;
+        glanceTargetRef.current = {
+          x: dir * (0.18 + Math.random() * 0.22),
+          y: (Math.random() - 0.5) * 0.10,
+        };
+      }
 
-    // Blend gaze towards section content during initial 2 seconds of arrival
-    if (inspectWeight > 0.005) {
-      const contentGazeX = contentDirection * 0.72;
-      const contentGazeY = -0.15; // slightly looking down at text/cards
-      targetGazeX = THREE.MathUtils.lerp(targetGazeX, contentGazeX, inspectWeight);
-      targetGazeY = THREE.MathUtils.lerp(targetGazeY, contentGazeY, inspectWeight);
+      if (isGlancingRef.current) {
+        glanceProgressRef.current += safeDelta;
+        const glanceDuration = 1.6;
+        const p = glanceProgressRef.current / glanceDuration;
+        if (p < 0.25) {
+          const u = p / 0.25;
+          const w = u * u * (3 - 2 * u);
+          targetGazeX = glanceTargetRef.current.x * w;
+          targetGazeY = glanceTargetRef.current.y * w;
+        } else if (p < 0.75) {
+          targetGazeX = glanceTargetRef.current.x;
+          targetGazeY = glanceTargetRef.current.y;
+        } else if (p < 1.0) {
+          const u = (p - 0.75) / 0.25;
+          const w = 1 - u * u * (3 - 2 * u);
+          targetGazeX = glanceTargetRef.current.x * w;
+          targetGazeY = glanceTargetRef.current.y * w;
+        } else {
+          isGlancingRef.current = false;
+          glanceProgressRef.current = 0;
+        }
+      } else {
+        // Resting natural breathing gaze
+        targetGazeX = Math.sin(t * 0.4) * 0.04;
+        targetGazeY = Math.cos(t * 0.3) * 0.02;
+      }
+    } else {
+      // Desktop: Interactive Cursor Tracking
+      const gazeWeight = GAZE_WEIGHTS[kLow] ?? 0.5;
+      const isPointerIdle = (nowMs - mousePosRef.current.lastMoveTime) > 5000;
+
+      if (!mousePosRef.current.isInside) {
+        targetGazeX = Math.sin(t * 0.3) * 0.05;
+        targetGazeY = Math.cos(t * 0.25) * 0.03;
+      } else if (isPointerIdle) {
+        targetGazeX = Math.sin(t * 0.5) * 0.22;
+        targetGazeY = Math.cos(t * 0.35) * 0.10;
+      } else {
+        targetGazeX = mousePosRef.current.nx * gazeWeight;
+        targetGazeY = -mousePosRef.current.ny * gazeWeight;
+      }
+
+      if (inspectWeight > 0.005) {
+        const contentGazeX = contentDirection * 0.72;
+        const contentGazeY = -0.15;
+        targetGazeX = THREE.MathUtils.lerp(targetGazeX, contentGazeX, inspectWeight);
+        targetGazeY = THREE.MathUtils.lerp(targetGazeY, contentGazeY, inspectWeight);
+      }
     }
 
     // Head target yaw & pitch
-    const contentHeadYaw = contentDirection * 0.26; // ~15 degrees towards content
-    const contentHeadPitch = 0.05; // slight curious inspection nod down
+    const contentHeadYaw = contentDirection * 0.26;
+    const contentHeadPitch = 0.05;
 
     const normalHeadTargetYaw = targetHeadYaw + targetGazeX * 0.38;
     const normalHeadTargetPitch = targetTiltX + targetGazeY * 0.18;
 
-    const blendedHeadTargetYaw = THREE.MathUtils.lerp(normalHeadTargetYaw, targetHeadYaw + contentHeadYaw, inspectWeight);
-    const blendedHeadTargetPitch = THREE.MathUtils.lerp(normalHeadTargetPitch, targetTiltX + contentHeadPitch, inspectWeight);
+    const blendedHeadTargetYaw = isMobile
+      ? normalHeadTargetYaw
+      : THREE.MathUtils.lerp(normalHeadTargetYaw, targetHeadYaw + contentHeadYaw, inspectWeight);
+    const blendedHeadTargetPitch = isMobile
+      ? normalHeadTargetPitch
+      : THREE.MathUtils.lerp(normalHeadTargetPitch, targetTiltX + contentHeadPitch, inspectWeight);
 
     curHeadTurnY.current = THREE.MathUtils.lerp(curHeadTurnY.current, blendedHeadTargetYaw, 1 - Math.exp(-8 * safeDelta));
     curHeadTiltX.current = THREE.MathUtils.lerp(curHeadTiltX.current, blendedHeadTargetPitch, 1 - Math.exp(-8 * safeDelta));
 
-    // Body follows head smoothly at 18% when settled (not fighting intro)
+    // Body follows head smoothly at 18% when settled
     if (!introActive || introFinishedRef.current) {
       const bodyFollowYaw = (curHeadTurnY.current - targetHeadYaw) * 0.18;
       finalYaw = lerpAngle(finalYaw, finalYaw + bodyFollowYaw, 0.25);
     }
 
-    // Hover over LUMI: gentle head lift and slight playful roll
+    // Hover over LUMI
     if (isHoveringLumiRef.current) {
       curHeadTiltX.current += 0.06;
       finalRoll += Math.sin(t * 10) * 0.015;
@@ -999,7 +1072,7 @@ function LumiSceneContent({
       }
     }
 
-    // Smoothly dissolve hero stage disc as LUMI departs Chapter 1
+    // Dissolve hero stage disc
     const heroDiscOpacity = Math.max(0, Math.min(1, 1 - (floatChapter - 1.0) / 0.7)) * footerFade;
     if (heroDiscRef.current) {
       heroDiscRef.current.visible = heroDiscOpacity > 0.005;
@@ -1013,7 +1086,7 @@ function LumiSceneContent({
       });
     }
 
-    // ─── 10. Eye Behavior (Blinking, Glancing, Mood Morphing) ───
+    // ─── 10. Eye Behavior ───
     blinkTimerRef.current += safeDelta;
     let eyeOpen = 1.0;
 
@@ -1058,26 +1131,21 @@ function LumiSceneContent({
       };
     }
 
-    // Breathing scale: 1.5% scale oscillation over 4 seconds
+    // Breathing scale: 1.5% scale oscillation
     const breathingScale = 1.0 + Math.sin((t * Math.PI * 2) / 4.0) * 0.015;
 
-    // Eyes lead head by ~80ms
     const lookTargetX = THREE.MathUtils.clamp(targetGazeX * 1.15 + saccadeOffsetRef.current.x, -1, 1);
     const lookTargetY = THREE.MathUtils.clamp(targetGazeY * 1.15 + saccadeOffsetRef.current.y, -1, 1);
     eyeLookRef.current.x = THREE.MathUtils.lerp(eyeLookRef.current.x, lookTargetX, 1 - Math.exp(-14 * safeDelta));
     eyeLookRef.current.y = THREE.MathUtils.lerp(eyeLookRef.current.y, lookTargetY, 1 - Math.exp(-14 * safeDelta));
 
     // ─── 11. Continuous Chapter Target Mood ───
-    // Section 5 range: [4.4, 5.6]
     const isChapter5 = floatChapter >= 4.4 && floatChapter <= 5.6;
     let targetMood: LumiMood = kfA.mood;
 
     if (isChapter5) {
-      // In Chapter 05: honor user's clicked mood if chosen, otherwise default to chapter 5 keyframe
       targetMood = userMoodOverrideRef.current ?? 'happy';
     } else {
-      // When scrolling away from Chapter 05 (down to Chapter 6 or up to Chapter 4):
-      // The selected expression MUST NOT persist!
       if (userMoodOverrideRef.current) {
         userMoodOverrideRef.current = null;
       }
@@ -1105,7 +1173,7 @@ function LumiSceneContent({
     eyeScaleRef.current = breathingScale;
     eyeTwinkleRef.current = t * 3.0;
 
-    // Push live 60fps values into animDataRef for zero-lag WebGL rendering
+    // Push live 60fps values into animDataRef
     if (animDataRef.current) {
       animDataRef.current.mood = activeMoodRef.current;
       animDataRef.current.eyeLookX = eyeLookRef.current.x;
@@ -1135,15 +1203,15 @@ function LumiSceneContent({
       />
       <directionalLight position={[-4, 5, -2]} intensity={0.4} />
 
-      {/* Hero Flat Stage Disc & Ellipse (smoothly dissolves as LUMI departs Chapter 1) */}
+      {/* Hero Flat Stage Disc & Ellipse */}
       <HeroFloorRing
         groupRef={heroDiscRef}
         centerX={isMobile ? 0 : isTablet ? 0 : 0.75}
-        centerY={isMobile ? (0.44 - 0.772 * 0.46) : isTablet ? (0.38 - 0.772 * 0.58) : -0.772}
-        scale={isMobile ? 0.46 : isTablet ? 0.58 : 1.0}
+        centerY={isMobile ? -0.772 * 1.02 : isTablet ? (0.38 - 0.772 * 0.58) : -0.772}
+        scale={isMobile ? 1.02 : isTablet ? 0.58 : 1.0}
       />
 
-      {/* Permanent Professional Ground Shadow (Rock-solid across all 9 chapters) */}
+      {/* Permanent Ground Shadow */}
       <LumiGroundShadow
         shadowGroupRef={shadowGroupRef}
         wheelShadowLRef={wheelShadowLRef}
@@ -1168,7 +1236,6 @@ function LumiSceneContent({
         />
       </group>
 
-      {/* High-fidelity local studio fill lighting with ZERO external HDR network requests */}
       <hemisphereLight intensity={0.4} groundColor="#E4E1EE" color="#FFFFFF" />
     </>
   );
@@ -1198,10 +1265,16 @@ export function LumiScene({
     return null;
   }
 
+  const handleTap = () => {
+    window.dispatchEvent(new CustomEvent('lumi:tap-robot'));
+  };
+
   return (
     <div
-      className="canvas-container max-lg:[mask-image:linear-gradient(to_bottom,black_260px,transparent_310px)] max-lg:[-webkit-mask-image:linear-gradient(to_bottom,black_260px,transparent_310px)] pointer-events-none"
+      className="canvas-container pointer-events-auto cursor-pointer"
       aria-hidden="true"
+      onClick={handleTap}
+      style={{ touchAction: 'pan-y' }}
     >
       <Canvas
         camera={{ position: [0, 0, 3.2], fov: 35 }}
@@ -1211,7 +1284,7 @@ export function LumiScene({
           powerPreference: 'high-performance',
           toneMapping: THREE.ACESFilmicToneMapping,
         }}
-        dpr={dpr}
+        dpr={Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 1.5)}
       >
         <PerformanceMonitor
           onDecline={() => setDpr(1.0)}

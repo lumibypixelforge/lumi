@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { LumiLogo } from './lumi-logo';
 import { IconMenu, IconClose } from './icons';
-import { DEFAULT_PRICING } from '@/config/product';
-
-import { usePathname } from 'next/navigation';
 
 export function Header() {
   const pathname = usePathname();
@@ -15,8 +13,12 @@ export function Header() {
   }
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
-  const isPreorderOpen = DEFAULT_PRICING.preordersOpen;
+  const [pricingApproved, setPricingApproved] = useState(false);
+  const [preordersOpen, setPreordersOpen] = useState(false);
   const isPreorderPage = pathname === '/preorder';
+
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const navLinks = [
     { label: 'Meet LUMI', href: '/#meet' },
@@ -25,6 +27,19 @@ export function Header() {
     { label: 'Pre-Order', href: '/preorder' },
     { label: 'Account', href: '/account' },
   ];
+
+  // Fetch store settings for CTA label
+  useEffect(() => {
+    fetch('/api/settings', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) {
+          setPricingApproved(Boolean(data.pricingApproved));
+          setPreordersOpen(Boolean(data.preordersOpen));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Thin scroll progress line under header
   useEffect(() => {
@@ -39,20 +54,76 @@ export function Header() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const ctaText = 'Pre-Order Now';
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      // Focus the close button when opened
+      setTimeout(() => {
+        closeButtonRef.current?.focus();
+      }, 50);
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [mobileMenuOpen]);
+
+  // Focus trap inside drawer & Escape to close
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!mobileMenuOpen) return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMobileMenuOpen(false);
+        return;
+      }
+
+      if (e.key === 'Tab' && drawerRef.current) {
+        const focusableElements = drawerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement?.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement?.focus();
+          }
+        }
+      }
+    },
+    [mobileMenuOpen]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  const ctaText = preordersOpen ? 'Pre-Order Now' : 'Join the waitlist';
+  const ctaHref = preordersOpen ? '/preorder' : '/#preorder';
 
   return (
     <header
       className="fixed top-0 left-0 right-0 z-[100] transition-all duration-300"
       style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
     >
-      <div className="bg-ground/85 border-b border-border/60 relative">
-        <div className="container-lg flex items-center justify-between h-16">
+      <div className="bg-ground/90 border-b border-border/70 relative pt-[env(safe-area-inset-top,0px)]">
+        <div className="container-lg flex items-center justify-between h-[56px] md:h-16 px-4 md:px-6">
           {/* Logo - Uppercase LUMI */}
           <Link
             href="/"
             className="flex items-center gap-2 no-underline hover:opacity-85 transition-opacity"
             aria-label="LUMI Home"
+            onClick={() => setMobileMenuOpen(false)}
           >
             <LumiLogo size="md" />
           </Link>
@@ -81,7 +152,7 @@ export function Header() {
               </Link>
             ) : (
               <Link
-                href="/preorder"
+                href={ctaHref}
                 className="btn btn-primary btn-sm no-underline"
               >
                 {ctaText}
@@ -89,14 +160,14 @@ export function Header() {
             )}
           </div>
 
-          {/* Mobile Menu Button */}
+          {/* Mobile Menu Hamburger Button (56px header, min 44px tap target) */}
           <button
-            className="md:!hidden flex items-center justify-center p-2 rounded-md text-muted hover:text-ink hover:bg-surface-raised cursor-pointer transition-colors"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            className="md:!hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md text-muted hover:text-ink hover:bg-surface-raised cursor-pointer transition-colors"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
             aria-expanded={mobileMenuOpen}
           >
-            {mobileMenuOpen ? <IconClose size={22} /> : <IconMenu size={22} />}
+            <IconMenu size={24} />
           </button>
         </div>
 
@@ -108,40 +179,75 @@ export function Header() {
         />
       </div>
 
-      {/* Mobile Menu */}
+      {/* Full-Height Mobile Drawer with Focus Trap & Locked Scroll */}
       {mobileMenuOpen && (
-        <div className="md:!hidden bg-surface border-b border-border shadow-lg">
-          <nav className="container-lg py-4 flex flex-col gap-1" aria-label="Mobile navigation">
-            {navLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="text-ink text-base font-medium py-3 px-4 rounded-md no-underline hover:bg-surface-raised transition-colors"
+        <div
+          ref={drawerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Mobile Navigation"
+          className="md:!hidden fixed inset-0 z-[200] bg-surface flex flex-col justify-between p-6 pt-[calc(env(safe-area-inset-top,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)] animate-[fadeRise_0.2s_ease-out_forwards]"
+        >
+          {/* Top Bar inside Drawer */}
+          <div>
+            <div className="flex items-center justify-between pb-6 border-b border-border">
+              <Link
+                href="/"
+                className="no-underline"
+                aria-label="LUMI Home"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                {link.label}
-              </a>
-            ))}
-            <div className="pt-3 mt-2 border-t border-border">
-              {isPreorderPage ? (
-                <Link
-                  href="/"
-                  className="block text-center py-2.5 text-sm font-medium text-muted hover:text-ink transition-colors no-underline"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Back to LUMI
-                </Link>
-              ) : (
-                <Link
-                  href="/preorder"
-                  className="btn btn-primary w-full no-underline justify-center text-center"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {ctaText}
-                </Link>
-              )}
+                <LumiLogo size="md" />
+              </Link>
+              <button
+                ref={closeButtonRef}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md text-muted hover:text-ink hover:bg-surface-raised cursor-pointer transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Close menu"
+              >
+                <IconClose size={24} />
+              </button>
             </div>
-          </nav>
+
+            {/* Nav Links */}
+            <nav className="flex flex-col gap-2 pt-6" aria-label="Mobile menu links">
+              {navLinks.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="text-ink text-lg font-semibold py-3 px-3 rounded-lg no-underline hover:bg-surface-raised transition-colors flex items-center justify-between"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <span>{link.label}</span>
+                  <span className="text-muted text-sm font-mono">→</span>
+                </a>
+              ))}
+            </nav>
+          </div>
+
+          {/* Primary Action Button at Bottom of Drawer */}
+          <div className="pt-6 border-t border-border space-y-3">
+            {isPreorderPage ? (
+              <Link
+                href="/"
+                className="btn btn-secondary w-full min-h-[48px] justify-center text-center no-underline font-semibold"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Back to LUMI
+              </Link>
+            ) : (
+              <Link
+                href={ctaHref}
+                className="btn btn-primary w-full min-h-[48px] justify-center text-center no-underline font-semibold"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {ctaText}
+              </Link>
+            )}
+            <p className="text-center text-[11px] font-mono text-muted tracking-wider uppercase">
+              LUMI TELEPRESENCE
+            </p>
+          </div>
         </div>
       )}
     </header>

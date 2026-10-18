@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 820" width="100%" height="100%">
+  <defs>
+    <!-- Screen Clip Path (Rounded corners matching modern phone display) -->
+    <clipPath id="screenClip">
+      <rect x="18" y="18" width="364" height="784" rx="42" ry="42" />
+    </clipPath>
+    <!-- Camera Viewport Clip -->
+    <clipPath id="cameraFeedClip">
+      <rect x="26" y="80" width="348" height="630" rx="24" ry="24" />
+    </clipPath>
+    <!-- Soft Living Room Gradients -->
+    <linearGradient id="wallGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F3EFEA" />
+      <stop offset="100%" stop-color="#E5DFD7" />
+    </linearGradient>
+    <linearGradient id="floorGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#D8CDBE" />
+      <stop offset="100%" stop-color="#C5B7A4" />
+    </linearGradient>
+    <linearGradient id="windowLight" x1="0%" y1="0%" x2="100%" y2="80%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.05" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Phone Body / Bezel -->
+  <rect x="10" y="10" width="380" height="800" rx="50" ry="50" fill="#1A1824" stroke="#312E40" stroke-width="4" />
+  <rect x="14" y="14" width="372" height="792" rx="46" ry="46" fill="#0C0A14" />
+
+  <!-- Screen Container -->
+  <g clip-path="url(#screenClip)">
+    <!-- App Background -->
+    <rect x="18" y="18" width="364" height="784" fill="#14121F" />
+
+    <!-- ── Live Camera Feed (Illustrated Telepresence Living Room) ── -->
+    <g clip-path="url(#cameraFeedClip)">
+      <!-- Back Wall -->
+      <rect x="26" y="80" width="348" height="420" fill="url(#wallGradient)" />
+      
+      <!-- Architectural Window on Left Wall -->
+      <polygon points="26,110 95,145 95,390 26,430" fill="#E8EEF5" />
+      <polygon points="32,125 90,155 90,380 32,415" fill="#C9DAEB" opacity="0.8" />
+      <!-- Window Sunlight Splash -->
+      <polygon points="95,160 280,360 210,510 95,490" fill="url(#windowLight)" />
+
+      <!-- Minimal Wall Art / Framed Print -->
+      <rect x="140" y="130" width="85" height="110" rx="3" fill="#DFD8CF" stroke="#B8AEA1" stroke-width="2" />
+      <circle cx="182" cy="175" r="28" fill="#6D4AE0" opacity="0.3" />
+      <rect x="155" y="195" width="55" height="25" fill="#3D384D" opacity="0.25" rx="2" />
+
+      <!-- Floor (Warm Wood Perspective) -->
+      <polygon points="26,480 374,480 374,710 26,710" fill="url(#floorGradient)" />
+      <!-- Floor Perspective Planks -->
+      <line x1="60" y1="480" x2="10" y2="710" stroke="#B5A48F" stroke-width="1.5" opacity="0.4" />
+      <line x1="130" y1="480" x2="100" y2="710" stroke="#B5A48F" stroke-width="1.5" opacity="0.4" />
+      <line x1="200" y1="480" x2="195" y2="710" stroke="#B5A48F" stroke-width="1.5" opacity="0.4" />
+      <line x1="270" y1="480" x2="290" y2="710" stroke="#B5A48F" stroke-width="1.5" opacity="0.4" />
+      <line x1="335" y1="480" x2="370" y2="710" stroke="#B5A48F" stroke-width="1.5" opacity="0.4" />
+
+      <!-- Modern Sofa / Furniture (Right Perspective) -->
+      <path d="M 240,430 L 374,380 L 374,530 L 230,550 Z" fill="#4A455A" />
+      <path d="M 240,430 L 374,380 L 374,405 L 235,450 Z" fill="#625C73" />
+      <!-- Warm Accent Throw Pillow -->
+      <polygon points="255,445 295,432 300,470 260,480" fill="#D4930D" opacity="0.9" />
+
+      <!-- Low Coffee Table -->
+      <polygon points="120,530 220,530 250,580 90,580" fill="#F8F6F2" stroke="#E0D9CD" stroke-width="1" />
+      <!-- Table Legs -->
+      <line x1="95" y1="580" x2="95" y2="605" stroke="#3D384D" stroke-width="3" />
+      <line x1="245" y1="580" x2="245" y2="605" stroke="#3D384D" stroke-width="3" />
+      <!-- Ceramic Mug on Table -->
+      <rect x="160" y="542" width="14" height="18" rx="2" fill="#6D4AE0" />
+      <path d="M 174,547 Q 180,551 174,555" fill="none" stroke="#6D4AE0" stroke-width="2" />
+
+      <!-- Indoor Plant in Corner -->
+      <path d="M 45,465 L 65,465 L 60,505 L 50,505 Z" fill="#8C7D6B" />
+      <ellipse cx="55" cy="465" rx="10" ry="3" fill="#5A4E3F" />
+      <!-- Foliage Fronds -->
+      <path d="M 55,465 Q 40,430 30,420 Q 42,435 55,465" fill="#3D7A55" />
+      <path d="M 55,465 Q 60,415 70,405 Q 65,430 55,465" fill="#4B8F65" />
+      <path d="M 55,465 Q 80,440 95,445 Q 75,455 55,465" fill="#366B4B" />
+
+      <!-- Vignette / Feed Border Overlay -->
+      <rect x="26" y="80" width="348" height="630" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" rx="24" />
+
+      <!-- ── In-Feed HUD Overlays ── -->
+      <!-- Top Left: Live Status & Quality -->
+      <g transform="translate(42, 98)">
+        <rect x="0" y="0" width="76" height="28" rx="6" fill="rgba(20,18,31,0.72)" backdrop-filter="blur(8px)" />
+        <circle cx="14" cy="14" r="4.5" fill="#2D9D6F">
+          <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+        </circle>
+        <text x="25" y="18" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" letter-spacing="0.06em">LIVE</text>
+      </g>
+
+      <!-- Top Right: Audio / Battery Status -->
+      <g transform="translate(244, 98)">
+        <rect x="0" y="0" width="112" height="28" rx="6" fill="rgba(20,18,31,0.72)" backdrop-filter="blur(8px)" />
+        <!-- Wi-Fi Icon -->
+        <path d="M 16,20 A 4,4 0 0,1 24,20 M 13,17 A 8,8 0 0,1 27,17 M 10,14 A 12,12 0 0,1 30,14" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" />
+        <!-- Battery Icon -->
+        <rect x="76" y="9" width="22" height="10" rx="2" fill="none" stroke="#FFFFFF" stroke-width="1.5" />
+        <rect x="99" y="12" width="2" height="4" rx="1" fill="#FFFFFF" />
+        <rect x="78.5" y="11.5" width="15" height="5" rx="1" fill="#2D9D6F" />
+        <!-- HD Tag -->
+        <text x="40" y="18" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">720p</text>
+      </g>
+
+      <!-- Bottom Center: Telepresence Room Location Tag -->
+      <g transform="translate(140, 664)">
+        <rect x="0" y="0" width="120" height="26" rx="6" fill="rgba(20,18,31,0.72)" />
+        <text x="60" y="17" font-family="system-ui, sans-serif" font-size="11" font-weight="500" fill="#FFFFFF" text-anchor="middle">Living Room</text>
+      </g>
+
+      <!-- Touch Drive Joystick Preview Overlay (Subtle) -->
+      <g transform="translate(75, 600)">
+        <circle cx="0" cy="0" r="38" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" />
+        <circle cx="0" cy="0" r="16" fill="#6D4AE0" stroke="#FFFFFF" stroke-width="2" />
+        <!-- Directional Markers -->
+        <polygon points="0,-28 -4,-22 4,-22" fill="#FFFFFF" opacity="0.6" />
+        <polygon points="0,28 -4,22 4,22" fill="#FFFFFF" opacity="0.6" />
+        <polygon points="-28,0 -22,-4 -22,4" fill="#FFFFFF" opacity="0.6" />
+        <polygon points="28,0 22,-4 22,4" fill="#FFFFFF" opacity="0.6" />
+      </g>
+    </g>
+
+    <!-- ── App Top Navigation Bar ── -->
+    <g transform="translate(36, 36)">
+      <!-- Back Chevron -->
+      <path d="M 12,18 L 4,10 L 12,2" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+      <!-- Device Name -->
+      <text x="164" y="14" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.04em">LUMI</text>
+      <!-- Connection Indicator Dot -->
+      <circle cx="164" cy="24" r="2.5" fill="#2D9D6F" />
+      <!-- Mute Mic Icon -->
+      <rect x="306" y="0" width="22" height="22" rx="5" fill="rgba(255,255,255,0.12)" />
+      <path d="M 317,6 L 317,12 M 313,9 C 313,12 321,12 321,9 M 317,14 L 317,17" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" />
+    </g>
+
+    <!-- ── App Bottom Driving Bar ── -->
+    <g transform="translate(36, 725)">
+      <!-- Emergency Stop Button -->
+      <rect x="0" y="0" width="68" height="42" rx="8" fill="#D93636" opacity="0.9" />
+      <text x="34" y="25" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.08em">STOP</text>
+
+      <!-- Talk Button -->
+      <rect x="78" y="0" width="172" height="42" rx="8" fill="#6D4AE0" />
+      <path d="M 124,21 L 124,17 M 121,15 C 121,19 127,19 127,15" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" />
+      <text x="164" y="26" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">Hold to Talk</text>
+
+      <!-- Speed Toggle -->
+      <rect x="260" y="0" width="68" height="42" rx="8" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+      <text x="294" y="25" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">SPD 2</text>
+    </g>
+
+    <!-- iOS Home Indicator Bar -->
+    <rect x="135" y="784" width="130" height="4.5" rx="2.5" fill="#FFFFFF" opacity="0.4" />
+
+    <!-- Speaker Ear Piece & Front Camera Notch -->
+    <rect x="150" y="24" width="100" height="24" rx="12" fill="#0C0A14" />
+    <circle cx="230" cy="36" r="4.5" fill="#1C1A28" stroke="#2B283D" stroke-width="1" />
+  </g>
+</svg>

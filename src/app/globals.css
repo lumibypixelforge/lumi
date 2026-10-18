@@ -36,6 +36,13 @@
   --radius-md: 6px;
   --radius-lg: 8px;
 
+  /* ── Mobile Robot Dock & Bars ── */
+  --header-h: 56px;
+  --dock-h: clamp(180px, 28svh, 260px);
+  --bottom-bar-h: 56px;
+  --dock-bg: #F7F6FB;
+  --dock-border: #E2E0EA;
+
   /* ── Shadows (soft, subtle) ── */
   --shadow-sm: 0 1px 2px rgba(30, 27, 46, 0.04);
   --shadow-md: 0 4px 12px rgba(30, 27, 46, 0.06);
@@ -49,6 +56,7 @@
   --z-modal: 300;
   --z-toast: 400;
   --z-canvas: 5;
+  --z-dock: 30;
 
   /* ── Transitions ── */
   --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -212,11 +220,13 @@ body {
 /* ── Micro-labels: [ TECH ] style ── */
 .micro-label {
   font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-accent);
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .micro-label::before { content: '[ '; }
@@ -225,10 +235,10 @@ body {
 /* ── Chapter numbers ── */
 .chapter-number {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--color-accent);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -417,38 +427,106 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   3D Canvas Container
+/* ═══════════════════════════════════════════════════════════════════════
+   3D Canvas Container & Mobile Robot Dock
    ═══════════════════════════════════════════════════════════════════════ */
 
-.canvas-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 15;
-  pointer-events: none !important;
+/* Desktop & Landscape phones under 500px: Fixed full viewport */
+@media (min-width: 768px), (max-height: 499px) and (orientation: landscape) {
+  .canvas-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 15;
+    pointer-events: none !important;
+    background: transparent !important;
+    border-bottom: none !important;
+  }
+
+  .chapter {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Mobile Portrait (below 768px and height >= 500px): Robot Dock directly under header */
+@media (max-width: 767px) and (min-height: 500px) {
+  .canvas-container {
+    position: fixed !important;
+    top: calc(var(--header-h) + env(safe-area-inset-top, 0px)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: var(--current-dock-h, var(--dock-h)) !important;
+    z-index: 30 !important;
+    background-color: var(--dock-bg, #F7F6FB) !important;
+    border-bottom: 1px solid var(--dock-border, #E2E0EA) !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
+    transition: background-color 0.4s ease, border-color 0.4s ease, height 0.25s ease-out;
+  }
+
+  /* Page content scrolls underneath dock, protected by solid background */
+  .mobile-story-wrapper {
+    padding-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + var(--dock-h));
+    padding-bottom: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom, 0px) + 24px);
+  }
+
+  /* Chapters start straight after each other: no 100vh gaps or empty spacers */
+  .chapter {
+    position: relative;
+    min-height: auto !important;
+    display: block !important;
+    padding-top: 48px !important;
+    padding-bottom: 48px !important;
+    scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + var(--dock-h) + 16px) !important;
+  }
+
+  /* Hero exception: large robot (46svh) above headline on initial load */
+  #hero.chapter {
+    padding-top: calc(clamp(260px, 46svh, 380px) - var(--dock-h) + 24px) !important;
+    padding-bottom: 40px !important;
+  }
+
+  /* Mobile Type & Spacing: 8px grid (Section 5) */
+  .chapter h2 {
+    font-size: clamp(28px, 8vw, 36px) !important;
+    line-height: 1.15 !important;
+    letter-spacing: -0.02em !important;
+    margin-bottom: 16px !important;
+  }
+
+  .chapter p.text-muted,
+  .chapter p.chapter-lead {
+    font-size: 16px !important;
+    line-height: 24px !important;
+    max-width: 40ch !important;
+    margin-bottom: 24px !important;
+  }
+
+  .chapter .micro-label {
+    font-size: 11px !important;
+    letter-spacing: 0.08em !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Full width cards with 20px padding and 12px gap */
+  .chapter .card {
+    width: 100% !important;
+    padding: 20px !important;
+    border-radius: 8px !important;
+    border-width: 1px !important;
+  }
 }
 
 .canvas-container * {
   pointer-events: none !important;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   Scroll Chapter Layout
-   ═══════════════════════════════════════════════════════════════════════ */
-
-.chapter {
-  position: relative;
-  min-height: 100vh;
-  display: flex;
-  align-items: flex-start;
-}
-
-@media (min-width: 1024px) {
-  .chapter {
-    align-items: center;
-  }
 }
 
 .chapter-content {

@@ -73,7 +73,7 @@ export function ChapterIndicator({ activeChapter = 1 }: { activeChapter: number 
             aria-current={isActive ? 'step' : undefined}
           >
             <span
-              className={`text-[10px] font-mono tracking-widest transition-all duration-200 ${
+              className={`text-[11px] font-mono tracking-widest transition-all duration-200 ${
                 isActive
                   ? 'text-accent font-bold opacity-100 scale-105'
                   : 'text-muted/60 font-medium opacity-40 group-hover:opacity-90 group-hover:text-ink'
