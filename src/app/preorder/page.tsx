@@ -152,11 +152,36 @@ export default function PreorderPage() {
     amountPaise: 0,
   });
 
+  // Pricing approval state (reads live from database settings)
+  const [pricingApproved, setPricingApproved] = useState<boolean>(true);
+
   // Verify genuine active Supabase session on mount
   useEffect(() => {
     const checkAuth = async () => {
       try {
         const supabase = createClient();
+
+        // Check live pricing approval from Supabase settings
+        try {
+          const { data: settingsData } = await supabase
+            .from('settings')
+            .select('key, value')
+            .in('key', ['pricing_approval', 'preorders_open']);
+
+          if (settingsData) {
+            for (const s of settingsData) {
+              if (s.key === 'pricing_approval' && s.value && typeof s.value === 'object') {
+                const val = s.value as { approved?: boolean };
+                if (typeof val.approved === 'boolean') {
+                  setPricingApproved(val.approved);
+                }
+              }
+            }
+          }
+        } catch {
+          // If query fails, default to true
+        }
+
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -366,8 +391,7 @@ export default function PreorderPage() {
   const totalPricePaise = rawPrice * formData.quantity;
   const balancePaise = totalPricePaise - depositPaise;
   const isDemoBuild = process.env.NODE_ENV !== 'production';
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isPaymentDisabled = isProduction && !DEFAULT_PRICING.pricingConfirmed;
+  const isPaymentDisabled = !pricingApproved && !DEFAULT_PRICING.pricingConfirmed;
 
   // ─── Step 2 Validation ──────────────────────────────────────────────
   const validateDeliveryForm = (): boolean => {

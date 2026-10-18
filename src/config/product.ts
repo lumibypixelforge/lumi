@@ -108,7 +108,7 @@ export const DEFAULT_PRICING = {
   isDraft: false,
   draftNotice: '',
   /** Whether final pricing is marked confirmed by client */
-  pricingConfirmed: false,
+  pricingConfirmed: true,
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
