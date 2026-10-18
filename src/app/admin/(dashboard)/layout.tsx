@@ -79,11 +79,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [adminData, setAdminData] = useState<AdminMeData | null>(null);
 
-  const isLoginPage = pathname === '/admin/login' || pathname?.startsWith('/admin/login/');
-
   useEffect(() => {
-    if (isLoginPage) return;
-
     fetch('/api/admin/auth/me')
       .then((res) => {
         if (!res.ok) {
@@ -100,7 +96,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .catch(() => {
         // Fallback
       });
-  }, [pathname, isLoginPage, router]);
+  }, [pathname, router]);
 
   // Close drawer on path change
   useEffect(() => {
@@ -114,11 +110,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       window.location.href = '/admin/login';
     }
   };
-
-  // If on login page, render clean full-page container
-  if (isLoginPage) {
-    return <>{children}</>;
-  }
 
   const env = adminData?.env || 'Development';
   const testPayments = adminData?.testPayments ?? true;
