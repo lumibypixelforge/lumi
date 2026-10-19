@@ -1042,7 +1042,7 @@ export default function HomePage() {
       <LumiScene activeChapter={activeChapter} mood={sceneMood} />
 
       {/* Mobile story wrapper gives page content top padding equal to --header-h on mobile */}
-      <div className="mobile-story-wrapper relative z-10">
+      <div className="mobile-story-wrapper relative">
         <HeroChapter preordersOpen={preordersOpen} isLiteMode={isLiteMode} />
         <MeetChapter isLiteMode={isLiteMode} />
         <SeeChapter isLiteMode={isLiteMode} />

@@ -767,19 +767,19 @@ function LumiSceneContent({
         let targetWheelSpin = 0;
         let inHold = false;
 
-        if (tVal > 0.88) {
+        if (tVal > 0.92) {
           targetX = -travelRange;
           targetYaw = 0.26;
           targetWheelSpin = 0;
-        } else if (tVal >= 0.62) {
-          // Enter: 0.88 -> 0.62 (LUMI drives in from left edge to center with ease-out, 15 deg yaw lean)
-          const u = (0.88 - tVal) / 0.26;
+        } else if (tVal >= 0.72) {
+          // Enter: 0.92 -> 0.72 (LUMI drives in from left edge to center with ease-out, 15 deg yaw lean)
+          const u = (0.92 - tVal) / 0.20;
           const easeOut = 1 - Math.pow(1 - u, 3);
           targetX = -travelRange * (1 - easeOut);
           targetYaw = 0.26 * (1 - easeOut);
           targetWheelSpin = (travelRange * easeOut) / wheelRadius;
-        } else if (tVal > 0.34) {
-          // Hold: 0.62 -> 0.34 (centered, faces reader)
+        } else if (tVal > 0.16) {
+          // Hold: 0.72 -> 0.16 (centered, faces reader during whole chapter reading dwell)
           inHold = true;
           targetX = 0;
           targetYaw = 0;
@@ -788,9 +788,9 @@ function LumiSceneContent({
             extraSpin = t * 2.2;
           }
           targetWheelSpin = (travelRange / wheelRadius) + extraSpin;
-        } else if (tVal >= 0.08) {
-          // Exit: 0.34 -> 0.08 (turns 15 deg yaw, drives out of right edge with ease-in)
-          const v = (0.34 - tVal) / 0.26;
+        } else if (tVal >= -0.05) {
+          // Exit: 0.16 -> -0.05 (turns 15 deg yaw, drives out of right edge with ease-in as stage scrolls off top)
+          const v = (0.16 - tVal) / 0.21;
           const easeIn = Math.pow(v, 3);
           targetX = travelRange * easeIn;
           targetYaw = 0.26 * easeIn;
@@ -829,14 +829,16 @@ function LumiSceneContent({
         }
 
         // Position model and shadow with safe scale (fits ~78% stage height, whole robot + shadow visible)
+        // Vertical offset +0.52 counters model internal -0.55 offset, perfectly centering robot vertically in stage
         const stageScale = 0.88;
-        modelGroupRef.current.position.set(st.x, currentY, 0);
+        const stageCenterYOffset = 0.52;
+        modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
         modelGroupRef.current.rotation.set(0, st.yaw, 0);
         modelGroupRef.current.scale.setScalar(stageScale);
         modelGroupRef.current.visible = true;
 
         if (shadowGroupRef.current) {
-          shadowGroupRef.current.position.set(st.x, currentY - 0.772 * stageScale, 0);
+          shadowGroupRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
           shadowGroupRef.current.rotation.set(0, st.yaw, 0);
           shadowGroupRef.current.scale.setScalar(stageScale);
         }
@@ -844,7 +846,7 @@ function LumiSceneContent({
         if (heroDiscRef.current) {
           heroDiscRef.current.visible = chapter === 1;
           if (chapter === 1) {
-            heroDiscRef.current.position.set(st.x, currentY - 0.772 * stageScale, 0);
+            heroDiscRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
             heroDiscRef.current.scale.setScalar(0.42);
           }
         }

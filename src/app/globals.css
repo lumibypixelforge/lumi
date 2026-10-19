@@ -438,7 +438,7 @@ body {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 5;
+  z-index: 15;
   pointer-events: none !important;
   background: transparent !important;
   border-bottom: none !important;
@@ -481,17 +481,17 @@ body {
     overflow: hidden;
   }
 
-  /* Chapter stage heights (Section 3.1) */
+  /* Chapter stage heights (tightened to eliminate excessive blank height) */
   .robot-stage.robot-stage-default {
-    height: clamp(260px, 42svh, 380px);
+    height: clamp(220px, 32svh, 280px);
   }
 
   .robot-stage.robot-stage-hero {
-    height: clamp(320px, 52svh, 460px);
+    height: clamp(260px, 38svh, 340px);
   }
 
   .robot-stage.robot-stage-mood {
-    height: 40svh;
+    height: clamp(220px, 32svh, 280px);
   }
 
   /* Pre-rendered Lite Mode robot image inside stage */
@@ -530,7 +530,6 @@ body {
   }
 
   /* Elevate mobile text and UI components so canvas never draws over them */
-  .chapter .container-lg,
   .chapter .grid,
   .chapter h1,
   .chapter h2,
@@ -540,7 +539,7 @@ body {
   .preorder-form-container,
   .phone-mockup-wrapper {
     position: relative;
-    z-index: 10;
+    z-index: 20;
   }
 
   /* Tighten mobile grid gap inside chapters */
