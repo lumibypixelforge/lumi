@@ -941,27 +941,34 @@ function LumiSceneContent({
         if (directionalLightRef.current) directionalLightRef.current.intensity = 1.1;
       }
 
-      // Position model and shadow with safe scale (fits ~75% stage height, whole robot + shadow visible)
-      // stageScale = 0.78 fits comfortably in stage height with clean margins
-      // stageCenterYOffset = 0.22 centers LUMI's visual bounding box (head to wheels) exactly at y=0 (middle of the stage)
-      const stageScale = 0.78;
-      const stageCenterYOffset = 0.22;
+      // Position model and shadow with prominent scale and exact mathematical centering
+      // stageScale = 1.25 on hero provides a bold, prominent size matching desktop presence without crowding
+      // stageScale = 1.18 on other chapters ensures large, clear visibility and expressive facial animation
+      // Mathematical centering:
+      // In local space, LumiGLBModel has head top at +0.450 and wheel bottom at -0.552 (midpoint -0.051).
+      // Setting stageCenterYOffset = +0.051 * stageScale and shadowY = -0.501 * stageScale makes head top at +0.501 * stageScale
+      // and wheels/shadow at -0.501 * stageScale. This places LUMI in the exact mathematical vertical center (y=0) of the stage!
+      const isHero = chapter === 1;
+      const stageScale = isHero ? 1.25 : 1.18;
+      const stageCenterYOffset = 0.051 * stageScale;
+      const shadowY = currentY - 0.501 * stageScale;
+
       modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
       modelGroupRef.current.rotation.set(st.pitch, st.yaw, st.roll);
       modelGroupRef.current.scale.set(stageScale * hopSquashXZ, stageScale * hopSquashY, stageScale * hopSquashXZ);
       modelGroupRef.current.visible = true;
 
       if (shadowGroupRef.current) {
-        shadowGroupRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
+        shadowGroupRef.current.position.set(st.x, shadowY, 0);
         shadowGroupRef.current.rotation.set(0, st.yaw, 0);
         shadowGroupRef.current.scale.set(stageScale * hopSquashXZ, stageScale, stageScale * hopSquashXZ);
       }
 
       if (heroDiscRef.current) {
-        heroDiscRef.current.visible = chapter === 1;
-        if (chapter === 1) {
-          heroDiscRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
-          heroDiscRef.current.scale.setScalar(0.42);
+        heroDiscRef.current.visible = isHero;
+        if (isHero) {
+          heroDiscRef.current.position.set(st.x, shadowY, 0);
+          heroDiscRef.current.scale.setScalar(0.48);
         }
       }
 
@@ -981,16 +988,18 @@ function LumiSceneContent({
 
       // Scissor & Viewport setup (0,0 is bottom-left in WebGL)
       // Three.js setScissor and setViewport accept CSS pixels and multiply by _pixelRatio internally.
+      const canvasH = state.size.height;
+      const canvasW = state.size.width;
       const sx = Math.round(rect.left);
-      const sy = Math.round(winH - rect.bottom);
+      const sy = Math.round(canvasH - rect.bottom);
       const sw = Math.round(rect.width);
       const sh = Math.round(rect.height);
 
-      // Clamp tightly within viewport bounds [0, winW] and [0, winH] to guarantee no bleed
+      // Clamp tightly within viewport bounds [0, canvasW] and [0, canvasH] to guarantee no bleed
       const clampedX = Math.max(0, sx);
       const clampedY = Math.max(0, sy);
-      const clampedW = Math.max(0, Math.min(winW - clampedX, sw));
-      const clampedH = Math.max(0, Math.min(winH - clampedY, sh));
+      const clampedW = Math.max(0, Math.min(canvasW - clampedX, sw));
+      const clampedH = Math.max(0, Math.min(canvasH - clampedY, sh));
 
       if (clampedW > 0 && clampedH > 0) {
         state.gl.setScissorTest(true);
