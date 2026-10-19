@@ -481,17 +481,17 @@ body {
     overflow: hidden;
   }
 
-  /* Chapter stage heights (tightened to eliminate excessive blank height) */
+  /* Chapter stage heights (clean generous room to eliminate cutting) */
   .robot-stage.robot-stage-default {
-    height: clamp(220px, 32svh, 280px);
+    height: clamp(240px, 34svh, 300px);
   }
 
   .robot-stage.robot-stage-hero {
-    height: clamp(260px, 38svh, 340px);
+    height: clamp(270px, 38svh, 340px);
   }
 
   .robot-stage.robot-stage-mood {
-    height: clamp(220px, 32svh, 280px);
+    height: clamp(240px, 34svh, 300px);
   }
 
   /* Pre-rendered Lite Mode robot image inside stage */

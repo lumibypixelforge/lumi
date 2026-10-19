@@ -838,10 +838,10 @@ function LumiSceneContent({
         if (directionalLightRef.current) directionalLightRef.current.intensity = 1.1;
       }
 
-      // Position model and shadow with safe scale (fits ~78% stage height, whole robot + shadow visible)
-      // Vertical offset +0.52 counters model internal -0.55 offset, perfectly centering robot vertically in stage
-      const stageScale = 0.88;
-      const stageCenterYOffset = 0.52;
+      // Position model and shadow with safe scale (fits ~75% stage height, whole robot + shadow visible)
+      // Vertical offset +0.16 ensures generous headroom so the top of LUMI's head is never cut off
+      const stageScale = 0.80;
+      const stageCenterYOffset = 0.16;
       modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
       modelGroupRef.current.rotation.set(0, st.yaw, 0);
       modelGroupRef.current.scale.setScalar(stageScale);
