@@ -47,14 +47,32 @@ export function Header() {
       .catch(() => {});
   }, []);
 
-  // Thin scroll progress line under header
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const lastScrollYRef = useRef(0);
+
+  // Scroll detection: 2px progress bar at very top, hide header on scroll down > 80px, return on scroll up
   useEffect(() => {
     const handleScroll = () => {
+      const currentScrollY = window.scrollY;
       const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
       if (maxScroll > 0) {
-        setScrollProgress(Math.min(100, Math.max(0, (window.scrollY / maxScroll) * 100)));
+        setScrollProgress(Math.min(100, Math.max(0, (currentScrollY / maxScroll) * 100)));
       }
+
+      if (currentScrollY <= 80) {
+        setHeaderVisible(true);
+      } else {
+        if (currentScrollY > lastScrollYRef.current) {
+          // Scrolling down after 80px: hide
+          setHeaderVisible(false);
+        } else if (currentScrollY < lastScrollYRef.current) {
+          // Scrolling up: show
+          setHeaderVisible(true);
+        }
+      }
+      lastScrollYRef.current = currentScrollY;
     };
+
     window.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
@@ -118,72 +136,75 @@ export function Header() {
   const ctaHref = preordersOpen ? '/preorder' : '/#preorder';
 
   return (
-    <header
-      className="fixed top-0 left-0 right-0 z-[100] transition-all duration-300"
-      style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-    >
-      <div className="bg-ground/90 border-b border-border/70 relative pt-[env(safe-area-inset-top,0px)]">
-        <div className="container-lg flex items-center justify-between h-[56px] md:h-16 px-4 md:px-6">
-          {/* Logo - Uppercase LUMI */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 no-underline hover:opacity-85 transition-opacity"
-            aria-label="LUMI Home"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            <LumiLogo size="md" />
-          </Link>
+    <>
+      {/* 2px progress line stays at the very top of the screen */}
+      <div
+        className="fixed top-0 left-0 right-0 h-[2px] bg-accent z-[101] pointer-events-none transition-all duration-75"
+        style={{ width: `${scrollProgress}%` }}
+        aria-hidden="true"
+      />
 
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-8" aria-label="Main navigation">
-            {navLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="text-muted text-sm font-medium no-underline hover:text-ink transition-colors duration-150"
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
+      <header
+        className={`fixed top-0 left-0 right-0 z-[100] transition-transform duration-250 ease-out ${
+          headerVisible ? 'translate-y-0' : '-translate-y-full'
+        }`}
+        style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+      >
+        <div className="bg-ground/90 border-b border-border/70 relative pt-[env(safe-area-inset-top,0px)]">
+          <div className="container-lg flex items-center justify-between h-[56px] md:h-16 px-4 md:px-6">
+            {/* Logo - Uppercase LUMI */}
+            <Link
+              href="/"
+              className="flex items-center gap-2 no-underline hover:opacity-85 transition-opacity"
+              aria-label="LUMI Home"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <LumiLogo size="md" />
+            </Link>
 
-          {/* Desktop CTA */}
-          <div className="hidden md:flex items-center gap-4">
-            {isPreorderPage ? (
-              <Link
-                href="/"
-                className="text-sm font-medium text-muted hover:text-ink transition-colors no-underline"
-              >
-                Back to LUMI
-              </Link>
-            ) : (
-              <Link
-                href={ctaHref}
-                className="btn btn-primary btn-sm no-underline"
-              >
-                {ctaText}
-              </Link>
-            )}
+            {/* Desktop Nav */}
+            <nav className="hidden md:flex items-center gap-8" aria-label="Main navigation">
+              {navLinks.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="text-muted text-sm font-medium no-underline hover:text-ink transition-colors duration-150"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+
+            {/* Desktop CTA */}
+            <div className="hidden md:flex items-center gap-4">
+              {isPreorderPage ? (
+                <Link
+                  href="/"
+                  className="text-sm font-medium text-muted hover:text-ink transition-colors no-underline"
+                >
+                  Back to LUMI
+                </Link>
+              ) : (
+                <Link
+                  href={ctaHref}
+                  className="btn btn-primary btn-sm no-underline"
+                >
+                  {ctaText}
+                </Link>
+              )}
+            </div>
+
+            {/* Mobile Menu Hamburger Button (56px header, min 44px tap target) */}
+            <button
+              className="md:!hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md text-muted hover:text-ink hover:bg-surface-raised cursor-pointer transition-colors"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <IconMenu size={24} />
+            </button>
           </div>
-
-          {/* Mobile Menu Hamburger Button (56px header, min 44px tap target) */}
-          <button
-            className="md:!hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md text-muted hover:text-ink hover:bg-surface-raised cursor-pointer transition-colors"
-            onClick={() => setMobileMenuOpen(true)}
-            aria-label="Open menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            <IconMenu size={24} />
-          </button>
         </div>
-
-        {/* Thin scroll progress indicator line */}
-        <div
-          className="absolute bottom-0 left-0 h-[2px] bg-accent transition-all duration-75"
-          style={{ width: `${scrollProgress}%` }}
-          aria-hidden="true"
-        />
-      </div>
 
       {/* Full-Height Mobile Drawer rendered via Portal with solid background */}
       {mounted && mobileMenuOpen && createPortal(
@@ -259,5 +280,6 @@ export function Header() {
         document.body
       )}
     </header>
+  </>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { DEFAULT_PRICING, formatPrice } from '@/config/product';
 import { IconArrowRight } from './icons';
@@ -124,19 +124,53 @@ export function MobileCTABar({
     return () => observer.disconnect();
   }, []);
 
+  // Scroll direction and up-distance tracking (>24px)
+  const [scrolledUp24, setScrolledUp24] = useState(false);
+  const [isScrollingDown, setIsScrollingDown] = useState(false);
+  const lastScrollYRef = useRef(0);
+  const scrollUpDistRef = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const curY = window.scrollY;
+      const prevY = lastScrollYRef.current;
+      const diff = prevY - curY;
+
+      if (diff > 0) {
+        // Scrolling UP
+        setIsScrollingDown(false);
+        scrollUpDistRef.current += diff;
+        if (scrollUpDistRef.current > 24) {
+          setScrolledUp24(true);
+        }
+      } else if (diff < -4) {
+        // Scrolling DOWN
+        setIsScrollingDown(true);
+        scrollUpDistRef.current = 0;
+        setScrolledUp24(false);
+      }
+
+      lastScrollYRef.current = curY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Three anchors: end of hero (ch 1 with visible), end of mood chapter (ch 5), order chapter (ch 9)
+  const isAtAnchor = (activeChapter === 1 && visible) || activeChapter === 5 || activeChapter === 9;
+
   // Rules:
   // 1. Hide while order card or form is on screen
   // 2. Hide in the footer
   // 3. Hide when keyboard is open
-  // 4. On screens shorter than 600px, show ONLY in the hero (ch 1) and chapter 09 (ch 9)
-  if (!visible) return null;
-  if (keyboardOpen) return null;
-  if (footerInView) return null;
-  if (formInView) return null;
+  // 4. Hide on scroll down
+  // 5. Show when scrolling up > 24px OR at three anchors (unless scrolling down or blocked)
+  if (keyboardOpen || footerInView || formInView) return null;
+  if (isScrollingDown && !isAtAnchor) return null;
 
-  if (isShortScreen && activeChapter !== 1 && activeChapter !== 9) {
-    return null;
-  }
+  const isVisible = scrolledUp24 || isAtAnchor;
+  if (!isVisible) return null;
 
   // Label formatting
   let buttonLabel = 'Join the waitlist';
@@ -145,7 +179,7 @@ export function MobileCTABar({
   if (preordersOpen) {
     buttonHref = '/preorder';
     if (pricingApproved && depositPaise) {
-      buttonLabel = `Pre-Order Now • Deposit ${formatPrice(depositPaise)}`;
+      buttonLabel = `Pre-Order Now • ${formatPrice(depositPaise)} deposit`;
     } else {
       buttonLabel = 'Pre-Order Now';
     }

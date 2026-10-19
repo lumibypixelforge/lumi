@@ -36,12 +36,9 @@
   --radius-md: 6px;
   --radius-lg: 8px;
 
-  /* ── Mobile Robot Dock & Bars ── */
+  /* ── Mobile Layout & Bars ── */
   --header-h: 56px;
-  --dock-h: clamp(180px, 28svh, 260px);
   --bottom-bar-h: 56px;
-  --dock-bg: #F7F6FB;
-  --dock-border: #E2E0EA;
 
   /* ── Shadows (soft, subtle) ── */
   --shadow-sm: 0 1px 2px rgba(30, 27, 46, 0.04);
@@ -55,8 +52,7 @@
   --z-overlay: 200;
   --z-modal: 300;
   --z-toast: 400;
-  --z-canvas: 5;
-  --z-dock: 30;
+  --z-canvas: 15;
 
   /* ── Transitions ── */
   --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -432,104 +428,166 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-/* ═══════════════════════════════════════════════════════════════════════
-   3D Canvas Container & Mobile Robot Dock
+   3D Canvas Container & In-Flow Robot Stages (Mobile Redesign)
    ═══════════════════════════════════════════════════════════════════════ */
+
+/* Full Viewport Fixed Canvas for both Mobile and Desktop */
+.canvas-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 15;
+  pointer-events: none !important;
+  background: transparent !important;
+  border-bottom: none !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
 
 /* Desktop & Landscape phones under 500px: Fixed full viewport */
 @media (min-width: 768px), (max-height: 499px) and (orientation: landscape) {
-  .canvas-container {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 15;
-    pointer-events: none !important;
-    background: transparent !important;
-    border-bottom: none !important;
-  }
-
   .chapter {
     position: relative;
     min-height: 100vh;
     display: flex;
     align-items: center;
   }
+
+  /* Robot stages are hidden on desktop since the 12-col layout renders the robot on the fixed canvas */
+  .robot-stage {
+    display: none !important;
+  }
 }
 
-/* Mobile Portrait (below 768px and height >= 500px): Robot Dock directly under header */
+/* Mobile Portrait (below 768px and height >= 500px): Robot Stages in Page Flow */
 @media (max-width: 767px) and (min-height: 500px) {
-  .canvas-container {
-    position: fixed !important;
-    top: calc(var(--header-h) + env(safe-area-inset-top, 0px)) !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    height: var(--current-dock-h, var(--dock-h)) !important;
-    z-index: 30 !important;
-    background-color: var(--dock-bg, #F7F6FB) !important;
-    border-bottom: 1px solid var(--dock-border, #E2E0EA) !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-    mask-image: none !important;
-    -webkit-mask-image: none !important;
-    transition: background-color 0.4s ease, border-color 0.4s ease, height 0.25s ease-out;
-  }
-
-  /* Page content scrolls underneath dock, protected by solid background */
   .mobile-story-wrapper {
-    padding-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + var(--dock-h));
+    padding-top: calc(var(--header-h) + env(safe-area-inset-top, 0px));
     padding-bottom: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom, 0px) + 24px);
   }
 
-  /* Chapters start straight after each other: no 100vh gaps or empty spacers */
+  /* In-flow Robot Stage: full-width block in normal document flow that scrolls like an image */
+  .robot-stage {
+    display: block;
+    width: 100%;
+    position: relative;
+    background: transparent !important;
+    border: none !important;
+    margin: 0 0 8px 0;
+    pointer-events: auto !important;
+    touch-action: pan-y !important;
+    overflow: hidden;
+  }
+
+  /* Chapter stage heights (Section 3.1) */
+  .robot-stage.robot-stage-default {
+    height: clamp(260px, 42svh, 380px);
+  }
+
+  .robot-stage.robot-stage-hero {
+    height: clamp(320px, 52svh, 460px);
+  }
+
+  .robot-stage.robot-stage-mood {
+    height: 40svh;
+  }
+
+  /* Pre-rendered Lite Mode robot image inside stage */
+  .lite-robot-img {
+    width: auto;
+    height: 78%;
+    max-width: 100%;
+    object-fit: contain;
+    margin: auto;
+    position: absolute;
+    inset: 0;
+    transition: transform 0.4s var(--ease-out), opacity 0.4s var(--ease-out);
+    pointer-events: none;
+  }
+
+  /* Chapters start straight after each other in flow (Section 6: padding on 8px grid) */
+  .section,
   .chapter,
+  .chapter.section,
   [id].chapter {
     position: relative;
     min-height: auto !important;
     display: block !important;
-    padding-top: 48px !important;
-    padding-bottom: 48px !important;
-    scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + var(--dock-h) + 16px) !important;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + 16px) !important;
   }
 
-  /* Hero: large robot (46svh) on load, 0 bottom padding so gap to Ch 02 is exactly 48px */
-  #hero.chapter {
-    padding-top: calc(clamp(260px, 46svh, 380px) - var(--dock-h) + 24px) !important;
-    padding-bottom: 0px !important;
+  /* Hero: stage on top, compact padding */
+  #hero.chapter,
+  #hero.section {
+    padding-top: 2px !important;
+    padding-bottom: 6px !important;
   }
 
-  /* Mobile Type & Spacing: 8px grid (Section 5) */
+  /* Tighten mobile grid gap inside chapters */
+  .chapter .grid {
+    gap: 6px !important;
+  }
+
+  /* Mobile Type & Spacing: 8px grid (Section 5 & 6) */
   .chapter h2 {
-    font-size: clamp(28px, 8vw, 36px) !important;
+    font-size: clamp(26px, 7.5vw, 32px) !important;
     line-height: 1.15 !important;
     letter-spacing: -0.02em !important;
-    margin-bottom: 16px !important;
+    margin-top: 0 !important;
+    margin-bottom: 2px !important;
   }
 
   .chapter p.text-muted,
-  .chapter p.chapter-lead {
-    font-size: 16px !important;
-    line-height: 24px !important;
+  .chapter p.chapter-lead,
+  .chapter p {
+    font-size: 15px !important;
+    line-height: 22px !important;
     max-width: 40ch !important;
-    margin-bottom: 24px !important;
+    margin-top: 0 !important;
+    margin-bottom: 4px !important;
   }
 
   .chapter .micro-label {
     font-size: 11px !important;
     letter-spacing: 0.08em !important;
-    margin-bottom: 12px !important;
+    margin-bottom: 2px !important;
   }
 
-  /* Full width cards with 20px padding and zero wasted vertical space */
-  .chapter .card {
-    width: 100% !important;
-    height: auto !important;
-    min-height: auto !important;
-    padding: 20px !important;
-    border-radius: 8px !important;
-    border-width: 1px !important;
+  /* Compact 48px rows with hairline dividers (Section 5) */
+  .compact-row {
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .compact-row:last-child {
+    border-bottom: none;
+  }
+
+  .compact-row-dark {
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .compact-row-dark:last-child {
+    border-bottom: none;
   }
 }
 

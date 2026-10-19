@@ -38,6 +38,8 @@ import type { LumiMood } from '@/components/3d/eye-engine';
 import { MobileCTABar } from '@/components/ui/mobile-cta-bar';
 import { ChapterIndicator } from '@/components/ui/chapter-indicator';
 
+import { useIsLowEndDevice } from '@/components/3d/lumi-scene';
+
 // Lazy-load the 3D scene (client-only WebGL)
 const LumiScene = dynamic(
   () => import('@/components/3d/lumi-scene').then((mod) => ({ default: mod.LumiScene })),
@@ -50,16 +52,57 @@ if (typeof window !== 'undefined') {
 
 function ChapterLabel({ number, label }: { number: string; label: string }) {
   return (
-    <div className="flex items-baseline gap-3 mb-3">
+    <div className="flex items-baseline gap-2 mb-2">
       <span className="chapter-number">{number}</span>
       <span className="micro-label">{label}</span>
     </div>
   );
 }
 
+function RobotStage({
+  chapter,
+  className = 'robot-stage-default',
+  activeMood,
+  isLiteMode = false,
+}: {
+  chapter: number;
+  className?: string;
+  activeMood?: LumiMood;
+  isLiteMode?: boolean;
+}) {
+  const handleTap = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lumi:tap-robot'));
+    }
+  };
+
+  return (
+    <div
+      className={`robot-stage ${className}`}
+      data-chapter={chapter}
+      aria-label={`LUMI Robot stage chapter ${chapter}`}
+      onClick={handleTap}
+    >
+      {isLiteMode && (
+        <img
+          src={chapter === 5 ? `/lite-robot/mood-${activeMood || 'happy'}.webp` : `/lite-robot/ch${chapter}.webp`}
+          alt="LUMI Robot"
+          className="lite-robot-img"
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── 01 Hero Chapter ────────────────────────────────────────────────
 
-function HeroChapter({ preordersOpen = true }: { preordersOpen?: boolean }) {
+function HeroChapter({
+  preordersOpen = true,
+  isLiteMode = false,
+}: {
+  preordersOpen?: boolean;
+  isLiteMode?: boolean;
+}) {
   const [highlightedLabel, setHighlightedLabel] = useState<string | null>(null);
   const [cursorHintVisible, setCursorHintVisible] = useState(true);
 
@@ -92,40 +135,43 @@ function HeroChapter({ preordersOpen = true }: { preordersOpen?: boolean }) {
   };
 
   return (
-    <section id="hero" className="chapter min-h-screen flex items-start lg:items-center relative pt-4 sm:pt-24 pb-12">
+    <section id="hero" className="chapter min-h-screen flex items-start lg:items-center relative pt-1 sm:pt-24 pb-3 sm:pb-12">
       <div className="container-lg">
+        {/* Robot Stage on top for mobile (<768px): clamp(320px, 52svh, 460px) */}
+        <RobotStage chapter={1} className="robot-stage-hero" isLiteMode={isLiteMode} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Text & Actions (Left Half: 5 cols) */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
-            {/* Eyebrow */}
-            <p className="text-accent font-mono text-xs font-semibold tracking-widest uppercase mb-3 sm:mb-5">
+            {/* Eyebrow: stage to eyebrow label 8px spacing */}
+            <p className="text-accent font-mono text-[11px] font-semibold tracking-widest uppercase mb-1 sm:mb-2">
               STAY CLOSE, FROM ANYWHERE
             </p>
 
             {/* Giant Wordmark */}
-            <h1 className="text-ink text-6xl sm:text-7xl lg:text-[clamp(96px,14vw,220px)] font-bold tracking-tight leading-[0.9] mb-4 sm:mb-6 select-none">
+            <h1 className="text-ink text-[clamp(38px,10vw,54px)] lg:text-[clamp(96px,14vw,220px)] font-bold tracking-tight leading-[0.9] mb-1.5 sm:mb-3 select-none">
               <span className="inline-block animate-[fadeRise_0.85s_ease-out_forwards]">
                 LUMI
               </span>
             </h1>
 
-            {/* Subhead: max 40-44 characters */}
-            <p className="text-muted text-base sm:text-lg lg:text-[20px] max-w-[40ch] mb-6 sm:mb-10 leading-relaxed text-balance">
+            {/* Subhead: max 40 characters, 16/24 */}
+            <p className="text-muted text-[15px] sm:text-[16px] leading-[22px] sm:leading-[24px] max-w-[40ch] mb-2.5 sm:mb-4 text-balance">
               A compact telepresence robot you drive from your phone, with live video, two&#8209;way voice and an expressive animated face.
             </p>
 
-            {/* Buttons (min 44px tap targets) */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 mb-8">
+            {/* Buttons (full width on mobile, min 44px tap targets, primary visible without scroll at 360x640) */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-3 sm:mb-6">
               <Link
                 href={preordersOpen ? '/preorder' : '/#preorder'}
                 onMouseEnter={triggerCtaHover}
                 onMouseLeave={triggerCtaUnhover}
-                className="btn btn-primary btn-lg min-h-[48px] inline-flex items-center justify-center gap-2 no-underline group cursor-pointer"
+                className="btn btn-primary w-full sm:w-auto min-h-[44px] sm:min-h-[48px] py-2.5 sm:py-3 inline-flex items-center justify-center gap-2 no-underline group cursor-pointer text-sm sm:text-base font-semibold"
               >
                 <span>{preordersOpen ? 'Pre-Order Now' : 'Join the waitlist'}</span>
-                <IconArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+                <IconArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
               </Link>
-              <a href="#meet" className="btn btn-secondary btn-lg min-h-[48px] no-underline text-center">
+              <a href="#meet" className="btn btn-secondary w-full sm:w-auto min-h-[44px] sm:min-h-[48px] py-2.5 sm:py-3 no-underline text-center inline-flex items-center justify-center text-sm sm:text-base font-semibold">
                 Explore LUMI
               </a>
             </div>
@@ -140,50 +186,21 @@ function HeroChapter({ preordersOpen = true }: { preordersOpen?: boolean }) {
               <span>Move your cursor. LUMI is watching.</span>
             </div>
 
-            {/* Feature row: Single brackets without duplicate brackets */}
-            <div className="pt-6 border-t border-border grid grid-cols-3 gap-2 sm:gap-4 text-left">
-              <div
-                className={`p-2 sm:p-2.5 rounded-lg transition-all duration-300 ${
-                  highlightedLabel === 'vision'
-                    ? 'bg-accent-light/50 ring-1 ring-accent'
-                    : 'bg-transparent'
-                }`}
-              >
-                <span className={`micro-label ${highlightedLabel === 'vision' ? 'text-accent font-bold' : ''}`}>
-                  VISION
-                </span>
-                <p className="text-xs sm:text-sm font-semibold text-ink mt-1 whitespace-nowrap">Live Wi&#8209;Fi</p>
-              </div>
-
-              <div
-                className={`p-2 sm:p-2.5 rounded-lg transition-all duration-300 ${
-                  highlightedLabel === 'voice'
-                    ? 'bg-accent-light/50 ring-1 ring-accent'
-                    : 'bg-transparent'
-                }`}
-              >
-                <span className={`micro-label ${highlightedLabel === 'voice' ? 'text-accent font-bold' : ''}`}>
-                  VOICE
-                </span>
-                <p className="text-xs sm:text-sm font-semibold text-ink mt-1 whitespace-nowrap">Two&#8209;Way</p>
-              </div>
-
-              <div
-                className={`p-2 sm:p-2.5 rounded-lg transition-all duration-300 ${
-                  highlightedLabel === 'drive'
-                    ? 'bg-accent-light/50 ring-1 ring-accent'
-                    : 'bg-transparent'
-                }`}
-              >
-                <span className={`micro-label ${highlightedLabel === 'drive' ? 'text-accent font-bold' : ''}`}>
-                  DRIVE
-                </span>
-                <p className="text-xs sm:text-sm font-semibold text-ink mt-1 whitespace-nowrap">2 Wheels</p>
-              </div>
+            {/* Feature row below fold: Single brackets ('[ VISION ]'), 11 px, one line each */}
+            <div className="pt-2 sm:pt-4 border-t border-border flex items-center justify-between text-center sm:text-left">
+              <span className={`micro-label text-[11px] ${highlightedLabel === 'vision' ? 'text-accent font-bold' : ''}`}>
+                VISION
+              </span>
+              <span className={`micro-label text-[11px] ${highlightedLabel === 'voice' ? 'text-accent font-bold' : ''}`}>
+                VOICE
+              </span>
+              <span className={`micro-label text-[11px] ${highlightedLabel === 'drive' ? 'text-accent font-bold' : ''}`}>
+                DRIVE
+              </span>
             </div>
 
-            {/* Scroll hint cleanly separated below feature row */}
-            <div className="mt-8 flex items-center gap-3 text-muted opacity-75">
+            {/* Scroll hint on desktop */}
+            <div className="hidden sm:flex mt-8 items-center gap-3 text-muted opacity-75">
               <IconScrollDown size={18} className="text-accent flex-shrink-0" />
               <span className="text-xs font-mono uppercase tracking-wider">Scroll to follow the story</span>
             </div>
@@ -199,61 +216,54 @@ function HeroChapter({ preordersOpen = true }: { preordersOpen?: boolean }) {
 
 // ─── 02 Meet LUMI ───────────────────────────────────────────────────
 
-function MeetChapter() {
+function MeetChapter({ isLiteMode = false }: { isLiteMode?: boolean }) {
   return (
     <section id="meet" className="chapter min-h-screen flex items-start lg:items-center section relative">
       <div className="container-lg">
+        {/* Mobile In-flow Stage */}
+        <RobotStage chapter={2} className="robot-stage-default" isLiteMode={isLiteMode} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
-          {/* Column 2: Text & Stacked Row Cards (Right Half: 5 cols) */}
+          {/* Column 2: Text & Rows */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
             <ChapterLabel number="02" label="INTRO" />
-            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
+            <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Meet LUMI
             </h2>
-            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]">
-              LUMI is a small robot that lets someone far away see, speak and move through a space.
-              Open the app on your phone, and you are immediately there.
+            <p className="text-[15px] sm:text-[16px] leading-[22px] sm:leading-[24px] text-muted mb-3 max-w-[40ch]">
+              LUMI lets someone far away see, speak and move through any space from a phone.
             </p>
 
-            {/* Three stacked row cards (min 16px body, 12px gap, 20px padding) */}
-            <div className="flex flex-col gap-3">
-              <div className="card p-5 h-auto min-h-0 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
-                <div className="w-10 h-10 bg-accent-light rounded-md flex items-center justify-center shrink-0">
-                  <IconCamera size={20} className="text-accent" />
+            {/* Three compact rows (icon, one line of text, 48 px high, hairline dividers) */}
+            <div className="flex flex-col border-t border-border mt-2">
+              <div className="compact-row flex items-center gap-3.5">
+                <div className="w-8 h-8 bg-accent-light rounded flex items-center justify-center shrink-0">
+                  <IconCamera size={18} className="text-accent" />
                 </div>
-                <div>
-                  <span className="micro-label">Camera</span>
-                  <p className="text-[16px] text-ink font-medium mt-0.5 leading-snug">
-                    Live video stream over local Wi&#8209;Fi
-                  </p>
-                </div>
+                <p className="text-[15px] sm:text-[16px] text-ink font-medium leading-snug">
+                  Live video stream over local Wi&#8209;Fi
+                </p>
               </div>
 
-              <div className="card p-5 h-auto min-h-0 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
-                <div className="w-10 h-10 bg-accent-light rounded-md flex items-center justify-center shrink-0">
-                  <IconSmile size={20} className="text-accent" />
+              <div className="compact-row flex items-center gap-3.5">
+                <div className="w-8 h-8 bg-accent-light rounded flex items-center justify-center shrink-0">
+                  <IconSmile size={18} className="text-accent" />
                 </div>
-                <div>
-                  <span className="micro-label">Display</span>
-                  <p className="text-[16px] text-ink font-medium mt-0.5 leading-snug">
-                    Animated face with seven distinct moods
-                  </p>
-                </div>
+                <p className="text-[15px] sm:text-[16px] text-ink font-medium leading-snug">
+                  Animated face with seven distinct moods
+                </p>
               </div>
 
-              <div className="card p-5 h-auto min-h-0 text-left bg-surface border border-border rounded-lg shadow-xs flex items-center gap-4">
-                <div className="w-10 h-10 bg-accent-light rounded-md flex items-center justify-center shrink-0">
-                  <IconNavigation size={20} className="text-accent" />
+              <div className="compact-row flex items-center gap-3.5">
+                <div className="w-8 h-8 bg-accent-light rounded flex items-center justify-center shrink-0">
+                  <IconNavigation size={18} className="text-accent" />
                 </div>
-                <div>
-                  <span className="micro-label">Wheels</span>
-                  <p className="text-[16px] text-ink font-medium mt-0.5 leading-snug">
-                    Two powered wheels, three speeds
-                  </p>
-                </div>
+                <p className="text-[15px] sm:text-[16px] text-ink font-medium leading-snug">
+                  Two powered wheels, three speeds
+                </p>
               </div>
             </div>
           </div>
@@ -265,45 +275,47 @@ function MeetChapter() {
 
 // ─── 03 See ─────────────────────────────────────────────────────────
 
-function SeeChapter() {
+function SeeChapter({ isLiteMode = false }: { isLiteMode?: boolean }) {
   return (
     <section id="see" className="chapter min-h-screen flex items-start lg:items-center section relative">
       <div className="container-lg">
+        {/* Mobile In-flow Stage */}
+        <RobotStage chapter={3} className="robot-stage-default" isLiteMode={isLiteMode} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          {/* Column 1: Text, Checks & Clean Illustrated Phone Mockup (Left Half: 5 cols) */}
+          {/* Column 1: Text, Checks & Clean Illustrated Phone Mockup */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
             <ChapterLabel number="03" label="VISION" />
-            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
+            <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               See where you want to&nbsp;be
             </h2>
-            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]">
-              LUMI streams live video from its camera directly to your phone over Wi&#8209;Fi.
-              Look around, check in on your space, and be present with those who matter.
+            <p className="text-[15px] sm:text-[16px] leading-[22px] sm:leading-[24px] text-muted mb-3 max-w-[40ch]">
+              Stream live video directly to your phone and look around in real time.
             </p>
 
             {/* Confirmed check items */}
-            <ul className="space-y-3 list-none p-0 mb-8">
-              <li className="flex items-start gap-3">
-                <IconCheck size={18} className="text-accent flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-ink font-medium">Real-time live video view inside the LUMI companion app</span>
+            <ul className="space-y-1.5 list-none p-0 mb-3">
+              <li className="flex items-center gap-2">
+                <IconCheck size={14} className="text-accent shrink-0" />
+                <span className="text-xs sm:text-sm text-ink font-medium">Real-time live video view inside companion app</span>
               </li>
-              <li className="flex items-start gap-3">
-                <IconCheck size={18} className="text-accent flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-ink font-medium">Battery and connection status in the app</span>
+              <li className="flex items-center gap-2">
+                <IconCheck size={14} className="text-accent shrink-0" />
+                <span className="text-xs sm:text-sm text-ink font-medium">Battery and Wi&#8209;Fi status at a glance</span>
               </li>
             </ul>
 
-            {/* LUMI Companion App Device Mockup */}
-            <div className="relative max-w-[260px] sm:max-w-[280px] mx-auto lg:mx-0 transition-transform duration-300 hover:scale-[1.02]">
+            {/* LUMI Companion App Device Mockup (uncompressed, centered, up to 300px wide) */}
+            <div className="relative max-w-[76px] sm:max-w-[200px] mx-auto lg:mx-0">
               <Image
                 src="/drive1.png"
                 alt="LUMI Companion App live video stream and touch driving controls"
                 width={853}
                 height={1844}
-                className="w-full h-auto object-contain block select-none pointer-events-none drop-shadow-[0_16px_36px_rgba(0,0,0,0.14)]"
+                className="w-full h-auto object-contain block select-none pointer-events-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
                 priority
               />
-              <p className="text-[11px] font-mono text-muted text-center mt-3 tracking-wider uppercase">
+              <p className="text-[11px] font-mono text-muted text-center mt-1 tracking-wider uppercase leading-tight">
                 LUMI Companion App
               </p>
             </div>
@@ -319,48 +331,41 @@ function SeeChapter() {
 
 // ─── 04 Talk ────────────────────────────────────────────────────────
 
-function TalkChapter() {
+function TalkChapter({ isLiteMode = false }: { isLiteMode?: boolean }) {
   return (
     <section id="talk" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative">
       <div className="container-lg">
+        {/* Mobile In-flow Stage (renders with sound rings prop) */}
+        <RobotStage chapter={4} className="robot-stage-default" isLiteMode={isLiteMode} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
-          {/* Column 2: Text & Audio Badges (Right Half: 5 cols) */}
+          {/* Column 2: Text & Audio Rows */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
             <ChapterLabel number="04" label="VOICE" />
-            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
+            <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Talk both ways
             </h2>
-            {/* Confirmed copy: removed 'with family' and 'keeps audio crisp' */}
-            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]">
-              Two&#8209;way audio lets you hold a natural conversation through LUMI.
-              Push&#8209;to&#8209;talk lets you speak on demand, while a lock option lets you speak hands&#8209;free.
+            <p className="text-[15px] sm:text-[16px] leading-[22px] sm:leading-[24px] text-muted mb-3 max-w-[40ch]">
+              Two&#8209;way audio lets you hold a natural conversation through LUMI from anywhere.
             </p>
 
-            {/* Feature Cards with 20px padding and zero wasted bottom space */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-              <div className="card p-5 h-auto min-h-0 bg-ground border border-border rounded-lg">
-                <div className="w-8 h-8 mb-2 bg-accent-light rounded flex items-center justify-center">
+            {/* Two compact rows (Push-to-talk, Hands-free lock, 48px rows, hairline dividers) */}
+            <div className="flex flex-col border-t border-border mt-2">
+              <div className="compact-row flex items-center gap-3">
+                <div className="w-8 h-8 bg-accent-light rounded flex items-center justify-center shrink-0">
                   <IconMicrophone size={18} className="text-accent" />
                 </div>
-                <p className="text-sm font-semibold text-ink">Push&#8209;to&#8209;Talk</p>
-                <p className="text-xs text-muted mt-1 leading-relaxed">Tap and hold to broadcast your voice instantly.</p>
+                <p className="text-sm font-semibold text-ink leading-tight">Push&#8209;to&#8209;Talk</p>
               </div>
-              <div className="card p-5 h-auto min-h-0 bg-ground border border-border rounded-lg">
-                <div className="w-8 h-8 mb-2 bg-accent-light rounded flex items-center justify-center">
+              <div className="compact-row flex items-center gap-3">
+                <div className="w-8 h-8 bg-accent-light rounded flex items-center justify-center shrink-0">
                   <IconSmile size={18} className="text-accent" />
                 </div>
-                <p className="text-sm font-semibold text-ink">Hands&#8209;Free Lock</p>
-                <p className="text-xs text-muted mt-1 leading-relaxed">Lock microphone open for natural conversation flow.</p>
+                <p className="text-sm font-semibold text-ink leading-tight">Hands&#8209;Free Lock</p>
               </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <span className="badge badge-accent">Two&#8209;way audio</span>
-              <span className="badge badge-accent">Onboard Speaker</span>
-              <span className="badge badge-accent">Wi&#8209;Fi Stream</span>
             </div>
           </div>
         </div>
@@ -375,36 +380,38 @@ function ExpressChapter({
   activeMood,
   onMoodSelect,
   preordersOpen = true,
+  isLiteMode = false,
 }: {
   activeMood: LumiMood;
   onMoodSelect: (m: LumiMood) => void;
   preordersOpen?: boolean;
+  isLiteMode?: boolean;
 }) {
-  // Seven verified production moods (excited is a dynamic website reaction only)
   const moods: LumiMood[] = ['happy', 'neutral', 'sleep', 'angry', 'upset', 'sad', 'love'];
 
   return (
-    <section id="express" className="chapter min-h-screen flex items-start lg:items-center section relative pb-20">
+    <section id="express" className="chapter min-h-screen flex items-start lg:items-center section relative pb-0 sm:pb-20">
       <div className="container-lg">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          {/* Column 1: Text & Mood Buttons (Left Half: 5 cols) */}
+          {/* Column 1: Title, then Stage, then 4-column mood grid */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
+            {/* Title first */}
             <ChapterLabel number="05" label="EXPRESSION" />
-            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
+            <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Seven moods, one face
             </h2>
-            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]">
-              LUMI's built&#8209;in display presents an expressive animated face with natural eyelids.
-              Select any mood below to see LUMI's face change.
-            </p>
 
-            {/* 4-column grid in two rows, min-h 44px, no scrollbar */}
-            <div className="grid grid-cols-4 gap-2 mb-4">
+            {/* Then the stage (40svh) */}
+            <RobotStage chapter={5} className="robot-stage-mood" activeMood={activeMood} isLiteMode={isLiteMode} />
+
+            {/* Then the 4-column mood grid (7 buttons, two rows, 44 px tall) */}
+            <div className="grid grid-cols-4 gap-2 mb-2">
               {moods.map((m) => {
                 const isActive = m === activeMood;
                 return (
                   <button
                     key={m}
+                    data-mood={m}
                     type="button"
                     onClick={() => {
                       onMoodSelect(m);
@@ -412,7 +419,7 @@ function ExpressChapter({
                         window.dispatchEvent(new CustomEvent('lumi:set-mood', { detail: m }));
                       }
                     }}
-                    className={`btn min-h-[44px] capitalize transition-all cursor-pointer text-xs py-2 px-1 flex items-center justify-center ${
+                    className={`btn min-h-[44px] capitalize transition-all cursor-pointer text-xs py-2 px-1 flex items-center justify-center font-medium ${
                       isActive ? 'btn-primary shadow-xs' : 'btn-secondary'
                     }`}
                   >
@@ -423,12 +430,17 @@ function ExpressChapter({
             </div>
 
             {/* Caption showing current mood */}
-            <p className="text-xs text-muted font-mono mb-8">
+            <p className="text-xs text-muted font-mono mb-2">
               Active face mood: <span className="text-accent font-semibold capitalize">{activeMood}</span>
             </p>
 
-            {/* Pre-order / Waitlist CTA */}
-            <div>
+            {/* One sentence */}
+            <p className="text-sm text-muted max-w-[40ch]">
+              LUMI's animated face brings personal presence and emotion to every interaction.
+            </p>
+
+            {/* Pre-order / Waitlist CTA (desktop only, hidden on mobile to avoid duplicate) */}
+            <div className="hidden lg:block mt-6">
               <Link
                 href={preordersOpen ? '/preorder' : '/#preorder'}
                 className="btn btn-primary btn-lg min-h-[48px] inline-flex items-center justify-center gap-2 no-underline cursor-pointer"
@@ -449,53 +461,53 @@ function ExpressChapter({
 
 // ─── 06 Drive ───────────────────────────────────────────────────────
 
-function DriveChapter() {
+function DriveChapter({ isLiteMode = false }: { isLiteMode?: boolean }) {
+  const [selectedSpeed, setSelectedSpeed] = useState('1.0x');
+
   return (
     <section id="drive" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative">
       <div className="container-lg">
+        {/* Mobile In-flow Stage (renders with wheel turn & dotted trail) */}
+        <RobotStage chapter={6} className="robot-stage-default" isLiteMode={isLiteMode} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
-          {/* Column 2: Text, Speed Chips & Mobility Controls (Right Half: 5 cols) */}
+          {/* Column 2: Controls */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
             <ChapterLabel number="06" label="MOBILITY" />
-            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
+            <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Drive from your phone
             </h2>
-            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]">
-              Steer with the on-screen joystick and choose from three speeds. Dual powered wheels navigate smoothly, with an on-screen stop button.
+            <p className="text-[15px] sm:text-[16px] leading-[22px] sm:leading-[24px] text-muted mb-3 max-w-[40ch]">
+              Steer with the on-screen joystick and switch speeds smoothly.
             </p>
 
-            {/* Speed chips with 20px padding and zero wasted vertical space */}
-            <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mb-6">
+            {/* Single segmented control (0.5x, 1x, 1.5x) in one 48 px row */}
+            <div className="p-1 min-h-[48px] bg-ground border border-border rounded-lg flex items-center justify-between mb-2">
               {PRODUCT_FACTS.drive.speedSettings.map((speed) => (
-                <div key={speed} className="card p-5 h-auto min-h-0 text-center bg-ground border border-border rounded-lg flex flex-col justify-center items-center">
-                  <p className="text-2xl font-bold text-ink">{speed}</p>
-                  <p className="text-xs text-muted font-mono mt-1">Speed</p>
-                </div>
+                <button
+                  key={speed}
+                  type="button"
+                  onClick={() => setSelectedSpeed(speed)}
+                  className={`flex-1 h-[40px] rounded flex items-center justify-center text-xs font-mono font-semibold transition-colors cursor-pointer border-none ${
+                    speed === selectedSpeed
+                      ? 'bg-surface text-ink shadow-xs border border-border font-bold'
+                      : 'bg-transparent text-muted hover:text-ink'
+                  }`}
+                >
+                  {speed}
+                </button>
               ))}
             </div>
 
-            {/* Joystick UI Card with 20px padding */}
-            <div className="card p-5 h-auto min-h-0 bg-ground border border-border rounded-lg flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 bg-surface rounded-full border border-border flex items-center justify-center flex-shrink-0 relative shadow-inner">
-                <div className="w-7 h-7 bg-accent/20 rounded-full flex items-center justify-center border border-accent/40">
-                  <div className="w-3.5 h-3.5 bg-accent rounded-full shadow-xs" />
-                </div>
+            {/* One compact row for the joystick */}
+            <div className="compact-row flex items-center gap-3.5 border-t border-border">
+              <div className="w-8 h-8 bg-surface rounded-full border border-border flex items-center justify-center shrink-0">
+                <div className="w-3.5 h-3.5 bg-accent rounded-full shadow-xs" />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-ink">Touchscreen Joystick</p>
-                <p className="text-xs text-muted mt-1 leading-relaxed">
-                  Intuitive touch steering with real-time responsive maneuvering.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <span className="badge badge-accent">Joystick Control</span>
-              <span className="badge badge-accent">Stop Button</span>
-              <span className="badge badge-accent">Two Powered Wheels</span>
+              <p className="text-sm font-semibold text-ink leading-tight">Touchscreen Directional Joystick</p>
             </div>
           </div>
         </div>
@@ -506,102 +518,54 @@ function DriveChapter() {
 
 // ─── 07 Power ───────────────────────────────────────────────────────
 
-function PowerChapter() {
+function PowerChapter({ isLiteMode = false }: { isLiteMode?: boolean }) {
   return (
     <section id="power" className="chapter min-h-screen flex items-start lg:items-center section relative" style={{ backgroundColor: 'var(--color-dark-bg)' }}>
       <div className="container-lg">
+        {/* Mobile In-flow Stage with floor glow ring on dark background */}
+        <RobotStage chapter={7} className="robot-stage-default" isLiteMode={isLiteMode} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          {/* Column 1: Text & Battery Info (Left Half: 5 cols) */}
+          {/* Column 1: Text & Rows */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
             <ChapterLabel number="07" label="POWER" />
-            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold" style={{ color: 'var(--color-dark-text)' }}>
+            <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold" style={{ color: 'var(--color-dark-text)' }}>
               Built to keep going
             </h2>
-            <p className="text-base sm:text-lg mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]" style={{ color: 'var(--color-dark-muted)' }}>
+            <p className="text-[16px] leading-[24px] mb-4 max-w-[40ch]" style={{ color: 'var(--color-dark-muted)' }}>
               LUMI runs on two rechargeable 18650 lithium&#8209;ion cells and recharges over USB&#8209;C.
             </p>
 
-            {/* Power spec cards: Full width single column on mobile, 3-col on desktop */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 mb-6">
-              {/* Card 1: Cells */}
-              <div
-                className="p-4 rounded-xl border flex items-center justify-between sm:flex-col sm:items-start transition-all duration-200"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }}
-              >
-                <div className="flex items-center gap-3.5 sm:block">
-                  <div className="w-8 h-8 sm:mb-2 bg-accent/20 rounded-lg flex items-center justify-center shrink-0">
+            {/* Three compact rows (cells, port, chemistry, 48px rows, hairline dividers) */}
+            <div className="flex flex-col border-t border-white/10 mt-2">
+              <div className="compact-row-dark flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-accent/20 rounded flex items-center justify-center shrink-0">
                     <IconBattery size={18} className="text-accent" />
                   </div>
-                  <div>
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block">
-                      CELLS
-                    </span>
-                    <p className="text-lg sm:text-2xl font-bold mt-0.5 leading-none tracking-tight" style={{ color: 'var(--color-dark-text)' }}>
-                      2×
-                    </p>
-                  </div>
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-dark-text)' }}>Cells</span>
                 </div>
-                <p className="text-[11px] font-mono sm:mt-3 leading-tight" style={{ color: 'var(--color-dark-muted)' }}>
-                  18650 Li&#8209;ion
-                </p>
+                <span className="text-xs font-mono" style={{ color: 'var(--color-dark-muted)' }}>2× 18650 Li&#8209;ion</span>
               </div>
 
-              {/* Card 2: Charging */}
-              <div
-                className="p-4 rounded-xl border flex items-center justify-between sm:flex-col sm:items-start transition-all duration-200"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }}
-              >
-                <div className="flex items-center gap-3.5 sm:block">
-                  <div className="w-8 h-8 sm:mb-2 bg-accent/20 rounded-lg flex items-center justify-center shrink-0">
+              <div className="compact-row-dark flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-accent/20 rounded flex items-center justify-center shrink-0">
                     <IconUsb size={18} className="text-accent" />
                   </div>
-                  <div>
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block">
-                      PORT
-                    </span>
-                    <p className="text-lg sm:text-2xl font-bold mt-0.5 leading-none tracking-tight" style={{ color: 'var(--color-dark-text)' }}>
-                      USB&#8209;C
-                    </p>
-                  </div>
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-dark-text)' }}>Charging Port</span>
                 </div>
-                <p className="text-[11px] font-mono sm:mt-3 leading-tight" style={{ color: 'var(--color-dark-muted)' }}>
-                  Standard
-                </p>
+                <span className="text-xs font-mono" style={{ color: 'var(--color-dark-muted)' }}>Standard USB&#8209;C</span>
               </div>
 
-              {/* Card 3: Chemistry */}
-              <div
-                className="p-4 rounded-xl border flex items-center justify-between sm:flex-col sm:items-start transition-all duration-200"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }}
-              >
-                <div className="flex items-center gap-3.5 sm:block">
-                  <div className="w-8 h-8 sm:mb-2 bg-accent/20 rounded-lg flex items-center justify-center shrink-0">
+              <div className="compact-row-dark flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-accent/20 rounded flex items-center justify-center shrink-0">
                     <IconRefresh size={18} className="text-accent" />
                   </div>
-                  <div>
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block">
-                      TYPE
-                    </span>
-                    <p className="text-lg sm:text-2xl font-bold mt-0.5 leading-none tracking-tight" style={{ color: 'var(--color-dark-text)' }}>
-                      Li&#8209;ion
-                    </p>
-                  </div>
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-dark-text)' }}>Chemistry</span>
                 </div>
-                <p className="text-[11px] font-mono sm:mt-3 leading-tight" style={{ color: 'var(--color-dark-muted)' }}>
-                  Rechargeable
-                </p>
-              </div>
-            </div>
-
-            {/* Confirmed Spec Highlights (unconfirmed servicing/pass-through claims removed) */}
-            <div className="space-y-2 pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-              <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-dark-muted)' }}>
-                <IconCheck size={14} className="text-accent shrink-0" />
-                <span>Dual internal 18650 rechargeable battery configuration</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-dark-muted)' }}>
-                <IconCheck size={14} className="text-accent shrink-0" />
-                <span>Standard USB&#8209;C charging connector</span>
+                <span className="text-xs font-mono" style={{ color: 'var(--color-dark-muted)' }}>Rechargeable Li&#8209;ion</span>
               </div>
             </div>
           </div>
@@ -616,53 +580,44 @@ function PowerChapter() {
 
 // ─── 08 Specs ───────────────────────────────────────────────────────
 
-function SpecsChapter() {
+function SpecsChapter({ isLiteMode = false }: { isLiteMode?: boolean }) {
   const confirmedSpecs = [
-    { label: 'WHEELS', value: `${PRODUCT_FACTS.drive.wheelCount} powered wheels`, note: 'Dual-drive configuration' },
-    { label: 'MOODS', value: '7 animated expressions', note: 'Built-in display' },
-    { label: 'SPEEDS', value: PRODUCT_FACTS.drive.speedSettings.join(', '), note: 'App joystick control' },
-    { label: 'CHARGING', value: PRODUCT_FACTS.power.chargingPort, note: 'Standard USB-C connector' },
-    { label: 'CELLS', value: `${PRODUCT_FACTS.power.batteryCount} × 18650 Li-ion`, note: 'Rechargeable internal cells' },
+    { label: 'WHEELS', value: `${PRODUCT_FACTS.drive.wheelCount} powered wheels` },
+    { label: 'MOODS', value: '7 animated expressions' },
+    { label: 'SPEEDS', value: PRODUCT_FACTS.drive.speedSettings.join(', ') },
+    { label: 'CHARGING', value: PRODUCT_FACTS.power.chargingPort },
+    { label: 'CELLS', value: `${PRODUCT_FACTS.power.batteryCount} × 18650 Li-ion` },
   ];
 
   return (
     <section id="specs" className="chapter min-h-screen flex items-start lg:items-center section bg-surface relative">
       <div className="container-lg">
+        {/* Mobile In-flow Stage */}
+        <RobotStage chapter={8} className="robot-stage-default" isLiteMode={isLiteMode} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Reserved 3D Model Stage Space (Desktop only) */}
           <div className="hidden lg:block lg:col-span-7 min-h-[500px] pointer-events-none" aria-hidden="true" />
 
-          {/* Column 2: Confirmed Specs (Right Half: 5 cols) */}
+          {/* Column 2: Confirmed Specs */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20">
             <ChapterLabel number="08" label="STATS" />
-            <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
+            <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
               Confirmed specifications
             </h2>
-            <p className="text-base sm:text-lg text-muted mb-6 sm:mb-8 leading-relaxed text-balance max-w-[40ch]">
-              Core verified hardware parameters for the LUMI telepresence robot.
-              More specifications will be published before pre-orders open.
+            <p className="text-[15px] sm:text-[16px] leading-[22px] sm:leading-[24px] text-muted mb-3 max-w-[40ch]">
+              Core verified hardware parameters.
             </p>
 
-            {/* Confirmed spec cards */}
-            <div className="space-y-3 mb-6">
+            {/* Definition list (label on left, value on right, 48 px rows, hairline dividers) */}
+            <dl className="flex flex-col border-t border-border mt-2">
               {confirmedSpecs.map((spec) => (
-                <div
-                  key={spec.label}
-                  className="p-4 bg-ground border border-border rounded-lg flex items-center justify-between"
-                >
-                  <div>
-                    <span className="micro-label">{spec.label}</span>
-                    <p className="text-base font-bold text-ink mt-0.5">{spec.value}</p>
-                  </div>
-                  <span className="text-xs text-muted font-mono hidden sm:inline-block">{spec.note}</span>
+                <div key={spec.label} className="compact-row flex items-center justify-between">
+                  <dt className="micro-label text-[11px]">{spec.label}</dt>
+                  <dd className="text-sm font-semibold text-ink m-0">{spec.value}</dd>
                 </div>
               ))}
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              <span>All 5 listed specifications are confirmed production hardware facts.</span>
-            </div>
+            </dl>
           </div>
         </div>
       </div>
@@ -705,12 +660,14 @@ function PreorderChapter({
   depositPaise: propDepositPaise,
   productPricePaise: propProductPricePaise,
   shippingEstimate: propShippingEstimate,
+  isLiteMode = false,
 }: {
   pricingApproved?: boolean;
   preordersOpen?: boolean;
   depositPaise?: number;
   productPricePaise?: number;
   shippingEstimate?: string;
+  isLiteMode?: boolean;
 } = {}) {
   const [pricingApproved, setPricingApproved] = useState(propPricingApproved ?? false);
   const [preordersOpen, setPreordersOpen] = useState(propPreordersOpen ?? false);
@@ -799,6 +756,8 @@ function PreorderChapter({
   return (
     <section id="preorder" className="chapter min-h-screen flex items-start lg:items-center section relative">
       <div className="container-lg">
+        {/* Mobile In-flow Stage */}
+        <RobotStage chapter={9} className="robot-stage-default" isLiteMode={isLiteMode} />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Column 1: Order / Waitlist Module (Left Half: 5 cols) */}
           <div className="lg:col-span-5 max-w-[520px] relative z-20 preorder-form-container">
@@ -806,26 +765,19 @@ function PreorderChapter({
               // Pre-Order Reservation Card (Only when approved in Settings)
               <>
                 <ChapterLabel number="09" label="ORDER" />
-                <h2 className="mb-4 sm:mb-6 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
+                <h2 className="mb-2 text-balance text-2xl sm:text-3xl lg:text-4xl font-bold text-ink">
                   Reserve your LUMI
                 </h2>
-                <p className="text-base sm:text-lg text-muted mb-6 leading-relaxed text-balance max-w-[40ch]">
-                  Secure priority shipping with a {depositText} refundable deposit. The remaining balance of {balanceText} is payable only before your robot ships in {shippingEstimate || 'Q3 2026'}.
+                <p className="text-sm sm:text-base text-muted mb-4 leading-normal text-balance max-w-[40ch]">
+                  Secure priority delivery with a {depositText} refundable deposit.
                 </p>
 
-                <div className="bg-surface border border-border rounded-xl p-5 sm:p-6 mb-8 shadow-sm">
-                  <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
-                    <div>
-                      <span className="badge badge-accent mb-1.5">BATCH 01 ALLOCATION</span>
-                      <h3 className="text-xl font-bold text-ink">LUMI Robot</h3>
+                <div className="bg-surface border border-border rounded-lg p-3 sm:p-6 mb-2 shadow-sm">
+                  <div className="space-y-1.5 text-xs text-muted mb-2.5 border-b border-border pb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-ink">Deposit Today</span>
+                      <span className="font-bold text-accent text-sm">{depositText}</span>
                     </div>
-                    <div className="text-right">
-                      <span className="block text-xs font-mono text-muted uppercase">Deposit Today</span>
-                      <span className="text-xl font-bold text-accent">{depositText}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5 text-xs text-muted mb-6">
                     <div className="flex items-center justify-between">
                       <span>Full Robot Price</span>
                       <span className="font-semibold text-ink">{priceText}</span>
@@ -835,31 +787,22 @@ function PreorderChapter({
                       <span className="font-semibold text-ink">{shippingEstimate || 'Q3 2026'}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Balance Due on Dispatch</span>
+                      <span>Balance on Dispatch</span>
                       <span className="font-semibold text-ink">{balanceText}</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-1 text-emerald-600 font-medium">
-                      <span>Deposit Refund Policy</span>
-                      <span>100% Refundable Prior to Dispatch</span>
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-1.5">
                     <Link
                       href="/preorder"
-                      className="btn btn-primary w-full text-center justify-center py-3 text-base no-underline inline-flex items-center gap-2 group cursor-pointer min-h-[48px]"
+                      className="btn btn-primary w-full text-center justify-center py-2 text-sm sm:text-base no-underline inline-flex items-center gap-2 group cursor-pointer min-h-[44px] font-semibold"
                     >
                       <span>Pre-Order LUMI Now</span>
                       <IconArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
                     </Link>
-                    <div className="text-center pt-1">
-                      <Link
-                        href="/account"
-                        className="text-xs text-muted hover:text-ink no-underline transition-colors"
-                      >
-                        Already placed a reservation? View your account →
-                      </Link>
-                    </div>
+                    <p className="text-[11px] text-muted text-center pt-0.5 leading-tight">
+                      100% refundable prior to dispatch • <Link href="/refund-policy" className="underline hover:text-ink">Refund Policy</Link>
+                    </p>
                   </div>
                 </div>
               </>
@@ -944,8 +887,8 @@ function PreorderChapter({
               </>
             )}
 
-            {/* Accessible FAQ Accordion */}
-            <div className="border-t border-border pt-8 sm:pt-12">
+            {/* Accessible FAQ Accordion (Desktop only) */}
+            <div className="hidden md:block border-t border-border pt-8 sm:pt-12">
               <h3 className="text-xl font-bold text-ink mb-6 sm:mb-8">
                 Frequently asked questions
               </h3>
@@ -1021,6 +964,9 @@ export default function HomePage() {
   const [productPricePaise, setProductPricePaise] = useState(DEFAULT_PRICING.pricePaise);
   const [shippingEstimate, setShippingEstimate] = useState(DEFAULT_PRICING.shippingEstimate);
 
+  // Low-end device Lite mode detection
+  const isLiteMode = useIsLowEndDevice();
+
   useEffect(() => {
     fetch('/api/settings', { cache: 'no-store' })
       .then((res) => res.json())
@@ -1095,26 +1041,28 @@ export default function HomePage() {
       {/* Fixed 3D Canvas / Mobile Robot Dock */}
       <LumiScene activeChapter={activeChapter} mood={sceneMood} />
 
-      {/* Mobile story wrapper gives page content top padding equal to --header-h + --dock-h on mobile */}
+      {/* Mobile story wrapper gives page content top padding equal to --header-h on mobile */}
       <div className="mobile-story-wrapper relative z-10">
-        <HeroChapter preordersOpen={preordersOpen} />
-        <MeetChapter />
-        <SeeChapter />
-        <TalkChapter />
+        <HeroChapter preordersOpen={preordersOpen} isLiteMode={isLiteMode} />
+        <MeetChapter isLiteMode={isLiteMode} />
+        <SeeChapter isLiteMode={isLiteMode} />
+        <TalkChapter isLiteMode={isLiteMode} />
         <ExpressChapter
           activeMood={chapter5Mood}
           onMoodSelect={handleChapter5MoodSelect}
           preordersOpen={preordersOpen}
+          isLiteMode={isLiteMode}
         />
-        <DriveChapter />
-        <PowerChapter />
-        <SpecsChapter />
+        <DriveChapter isLiteMode={isLiteMode} />
+        <PowerChapter isLiteMode={isLiteMode} />
+        <SpecsChapter isLiteMode={isLiteMode} />
         <PreorderChapter
           preordersOpen={preordersOpen}
           pricingApproved={pricingApproved}
           depositPaise={depositPaise}
           productPricePaise={productPricePaise}
           shippingEstimate={shippingEstimate}
+          isLiteMode={isLiteMode}
         />
       </div>
 

@@ -293,13 +293,14 @@ function LumiSceneContent({
   onMoodChange?: (m: LumiMood) => void;
 }) {
   const { size } = useThree();
-  const isMobile = size.width < 768;
+  const isMobile = size.width < 768 && !(size.height < 500);
   const isTablet = size.width >= 768 && size.width < 1024;
   const responsiveScaleMul = isMobile ? 1.0 : isTablet ? 0.88 : 1.0;
 
   const modelGroupRef = useRef<THREE.Group>(null!);
   const ambientLightRef = useRef<THREE.AmbientLight>(null!);
   const directionalLightRef = useRef<THREE.DirectionalLight>(null!);
+  const mobileStageStateRef = useRef<Record<number, { x: number; yaw: number; wheelSpin: number }>>({});
 
   const initialKeyframe = isMobile ? MOBILE_KEYFRAMES[1] : isTablet ? TABLET_KEYFRAMES[1] : DESKTOP_KEYFRAMES[1];
   const initialStageX = initialKeyframe.x;
@@ -626,7 +627,7 @@ function LumiSceneContent({
     }
   };
 
-  // ─── Main Animation Loop (Single R3F loop) ──────────────────────────
+  // ─── Main Animation Loop (Single R3F loop with priority 1) ──────────
   useFrame((state, delta) => {
     if (isTabHiddenRef.current || !modelGroupRef.current) return;
 
@@ -634,6 +635,230 @@ function LumiSceneContent({
     const safeDelta = isFirstFrameRef.current ? Math.min(delta, 1 / 60) : Math.min(delta, 1 / 30);
     const nowMs = performance.now();
 
+    // ─── Mobile Multi-Stage Scissor Test Rendering (<768px portrait) ───
+    if (isMobile) {
+      if (typeof document === 'undefined') return;
+
+      const stageElements = Array.from(document.querySelectorAll<HTMLElement>('.robot-stage'));
+      if (stageElements.length === 0) {
+        state.gl.autoClear = true;
+        state.gl.clear();
+        return;
+      }
+
+      state.gl.autoClear = false;
+      state.gl.clear();
+
+      // Tap Hop check
+      let hopY = 0;
+      let isHopping = false;
+      if (hopStartTimeRef.current > 0) {
+        const hopElapsed = (nowMs - hopStartTimeRef.current) / 450;
+        if (hopElapsed >= 0 && hopElapsed < 1) {
+          hopY = Math.sin(hopElapsed * Math.PI) * 0.18;
+          isHopping = true;
+        }
+      }
+
+      // Autonomous glance update (every 5-8s)
+      glanceTimerRef.current += safeDelta;
+      if (glanceTimerRef.current >= nextGlanceAtRef.current) {
+        glanceTimerRef.current = 0;
+        nextGlanceAtRef.current = 5.0 + Math.random() * 3.0;
+        isGlancingRef.current = true;
+        glanceProgressRef.current = 0;
+        glanceTargetRef.current = {
+          x: (Math.random() - 0.5) * 0.6,
+          y: (Math.random() - 0.5) * 0.4,
+        };
+      }
+
+      let eyeLookX = 0;
+      let eyeLookY = 0;
+      if (isGlancingRef.current) {
+        glanceProgressRef.current += safeDelta * 1.5;
+        if (glanceProgressRef.current >= 1.0) {
+          isGlancingRef.current = false;
+        } else {
+          const glanceEase = Math.sin(glanceProgressRef.current * Math.PI);
+          eyeLookX = glanceTargetRef.current.x * glanceEase;
+          eyeLookY = glanceTargetRef.current.y * glanceEase;
+        }
+      }
+
+      // Blinking
+      blinkTimerRef.current += safeDelta;
+      if (blinkTimerRef.current >= nextBlinkAtRef.current) {
+        blinkTimerRef.current = 0;
+        nextBlinkAtRef.current = 2.5 + Math.random() * 3.5;
+        isBlinkingRef.current = true;
+        blinkProgressRef.current = 0;
+      }
+      let eyeOpen = 1.0;
+      if (isBlinkingRef.current) {
+        blinkProgressRef.current += safeDelta * 7.5;
+        if (blinkProgressRef.current >= 1.0) {
+          isBlinkingRef.current = false;
+        } else {
+          eyeOpen = Math.abs(Math.sin(blinkProgressRef.current * Math.PI - Math.PI / 2));
+        }
+      }
+      if (isHopping) {
+        eyeOpen = 1.35;
+      }
+
+      const winH = window.innerHeight;
+      const dpr = Math.min(state.gl.getPixelRatio(), 1.5);
+      const travelRange = 1.85;
+      const wheelRadius = 0.12;
+
+      stageElements.forEach((stageEl) => {
+        const chapter = parseInt(stageEl.getAttribute('data-chapter') || '1', 10);
+        const rect = stageEl.getBoundingClientRect();
+
+        // Mount a view only when its stage is within 1.5 screen heights of viewport
+        if (rect.bottom < -winH * 0.5 || rect.top > winH * 1.5) {
+          return;
+        }
+
+        // t = stage center vertical position as fraction of viewport height (0 at top, 1 at bottom)
+        const stageCenterY = rect.top + rect.height * 0.5;
+        const tVal = stageCenterY / winH;
+
+        let targetX = 0;
+        let targetYaw = 0;
+        let targetWheelSpin = 0;
+        let inHold = false;
+
+        if (tVal > 0.88) {
+          targetX = -travelRange;
+          targetYaw = 0.26;
+          targetWheelSpin = 0;
+        } else if (tVal >= 0.62) {
+          // Enter: 0.88 -> 0.62 (LUMI drives in from left edge to center with ease-out, 15 deg yaw lean)
+          const u = (0.88 - tVal) / 0.26;
+          const easeOut = 1 - Math.pow(1 - u, 3);
+          targetX = -travelRange * (1 - easeOut);
+          targetYaw = 0.26 * (1 - easeOut);
+          targetWheelSpin = (travelRange * easeOut) / wheelRadius;
+        } else if (tVal > 0.34) {
+          // Hold: 0.62 -> 0.34 (centered, faces reader)
+          inHold = true;
+          targetX = 0;
+          targetYaw = 0;
+          let extraSpin = 0;
+          if (chapter === 6) {
+            extraSpin = t * 2.2;
+          }
+          targetWheelSpin = (travelRange / wheelRadius) + extraSpin;
+        } else if (tVal >= 0.08) {
+          // Exit: 0.34 -> 0.08 (turns 15 deg yaw, drives out of right edge with ease-in)
+          const v = (0.34 - tVal) / 0.26;
+          const easeIn = Math.pow(v, 3);
+          targetX = travelRange * easeIn;
+          targetYaw = 0.26 * easeIn;
+          targetWheelSpin = (travelRange / wheelRadius) + (travelRange * easeIn) / wheelRadius;
+        } else {
+          targetX = travelRange;
+          targetYaw = 0.26;
+          targetWheelSpin = (2 * travelRange) / wheelRadius;
+        }
+
+        // Frame-rate independent smoothing step
+        if (!mobileStageStateRef.current[chapter]) {
+          mobileStageStateRef.current[chapter] = { x: targetX, yaw: targetYaw, wheelSpin: targetWheelSpin };
+        }
+        const st = mobileStageStateRef.current[chapter];
+        st.x = THREE.MathUtils.lerp(st.x, targetX, 1 - Math.exp(-18 * safeDelta));
+        st.yaw = lerpAngle(st.yaw, targetYaw, 1 - Math.exp(-18 * safeDelta));
+        st.wheelSpin = THREE.MathUtils.lerp(st.wheelSpin, targetWheelSpin, 1 - Math.exp(-22 * safeDelta));
+
+        // Idle float & hop
+        const idleY = Math.sin(t * 1.8) * 0.02;
+        const currentY = idleY + hopY;
+
+        // Stage mood
+        let stageMood: LumiMood = (CHAPTER_DEFAULT_MOODS[chapter] || 'happy');
+        if (chapter === 5) {
+          stageMood = userMoodOverrideRef.current || selectedMood || 'happy';
+        }
+        if (isHopping) {
+          stageMood = 'excited';
+        }
+
+        // Props for chapters (inside stage only, no particles)
+        const soundOp = chapter === 4 && inHold ? 1.0 : 0.0;
+        const trailOp = chapter === 6 && inHold ? 1.0 : 0.0;
+        const glowOp = chapter === 7 && inHold ? 1.0 : 0.0;
+
+        // Lighting for Ch 07 dark background
+        if (chapter === 7) {
+          if (ambientLightRef.current) ambientLightRef.current.intensity = 0.55;
+          if (directionalLightRef.current) directionalLightRef.current.intensity = 0.65;
+        } else {
+          if (ambientLightRef.current) ambientLightRef.current.intensity = 0.9;
+          if (directionalLightRef.current) directionalLightRef.current.intensity = 1.1;
+        }
+
+        // Position model and shadow
+        const stageScale = 1.02;
+        modelGroupRef.current.position.set(st.x, currentY, 0);
+        modelGroupRef.current.rotation.set(0, st.yaw, 0);
+        modelGroupRef.current.scale.setScalar(stageScale);
+        modelGroupRef.current.visible = true;
+
+        if (shadowGroupRef.current) {
+          shadowGroupRef.current.position.set(st.x, currentY - 0.772 * stageScale, 0);
+          shadowGroupRef.current.rotation.set(0, st.yaw, 0);
+          shadowGroupRef.current.scale.setScalar(stageScale);
+        }
+
+        if (heroDiscRef.current) {
+          heroDiscRef.current.visible = chapter === 1;
+          if (chapter === 1) {
+            heroDiscRef.current.position.set(st.x, currentY - 0.772 * stageScale, 0);
+            heroDiscRef.current.scale.setScalar(0.48);
+          }
+        }
+
+        // Update animData for this stage render pass
+        if (animDataRef.current) {
+          animDataRef.current.mood = stageMood;
+          animDataRef.current.eyeLookX = eyeLookX;
+          animDataRef.current.eyeLookY = eyeLookY;
+          animDataRef.current.eyeOpenness = eyeOpen;
+          animDataRef.current.eyeScale = isHopping ? 1.15 : 1.0;
+          animDataRef.current.wheelSpinL = st.wheelSpin;
+          animDataRef.current.wheelSpinR = st.wheelSpin;
+          animDataRef.current.soundRingsOpacity = soundOp;
+          animDataRef.current.dottedTrailOpacity = trailOp;
+          animDataRef.current.floorGlowOpacity = glowOp;
+          animDataRef.current.fadeOpacity = 1.0;
+        }
+
+        // Scissor & Viewport setup (0,0 is bottom-left in WebGL)
+        const sx = Math.round(rect.left * dpr);
+        const sy = Math.round((winH - rect.bottom) * dpr);
+        const sw = Math.round(rect.width * dpr);
+        const sh = Math.round(rect.height * dpr);
+
+        if (sw > 0 && sh > 0) {
+          state.gl.setScissorTest(true);
+          state.gl.setScissor(sx, sy, sw, sh);
+          state.gl.setViewport(sx, sy, sw, sh);
+
+          state.camera.aspect = rect.width / rect.height;
+          state.camera.updateProjectionMatrix();
+
+          state.gl.render(state.scene, state.camera);
+        }
+      });
+
+      state.gl.setScissorTest(false);
+      return;
+    }
+
+    // ─── Desktop 12-Column Stage Choreography (min-width: 768px & landscape <500px) ───
     // ─── 1. Footer Clearance Fade ───
     let footerFade = 1.0;
     if (typeof window !== 'undefined') {
@@ -683,7 +908,7 @@ function LumiSceneContent({
     currentChapterFloat.current = floatChapter;
 
     // ─── 3. Interpolate Keyframes ───
-    const keyframes = isMobile ? MOBILE_KEYFRAMES : isTablet ? TABLET_KEYFRAMES : DESKTOP_KEYFRAMES;
+    const keyframes = isTablet ? TABLET_KEYFRAMES : DESKTOP_KEYFRAMES;
     const kLow = Math.max(1, Math.min(8, Math.floor(floatChapter)));
     const kHigh = Math.min(9, kLow + 1);
     const blend = floatChapter - kLow;
@@ -710,26 +935,6 @@ function LumiSceneContent({
     }
     if (directionalLightRef.current) {
       directionalLightRef.current.intensity = THREE.MathUtils.lerp(1.1, 0.6, bgDarkInt);
-    }
-
-    // ─── 3B. Dynamic Mobile Dock Height & Dock Background Cross-fade ───
-    if (isMobile && typeof window !== 'undefined') {
-      // 1. Cross-fade dock background to match chapter (dark for Chapter 07, light for others)
-      const r = Math.round(247 + (14 - 247) * bgDarkInt);
-      const g = Math.round(246 + (11 - 246) * bgDarkInt);
-      const b = Math.round(251 + (26 - 251) * bgDarkInt);
-      document.documentElement.style.setProperty('--dock-bg', `rgb(${r}, ${g}, ${b})`);
-      document.documentElement.style.setProperty('--dock-border', bgDarkInt > 0.5 ? 'rgba(255,255,255,0.12)' : '#E2E0EA');
-
-      // 2. Hero exception: large dock (46svh) smoothly damping into standard dock (28svh)
-      const svh = window.innerHeight;
-      const heroDockH = Math.min(380, Math.max(260, svh * 0.46));
-      const standardDockH = Math.min(260, Math.max(180, svh * 0.28));
-      const heroScrollDist = Math.max(1, svh * 0.45);
-      const heroP = Math.min(1, Math.max(0, scrollY / heroScrollDist));
-      const smoothP = heroP * heroP * (3 - 2 * heroP);
-      const currentDockH = heroDockH + (standardDockH - heroDockH) * smoothP;
-      document.documentElement.style.setProperty('--current-dock-h', `${Math.round(currentDockH)}px`);
     }
 
     // ─── 4. Filtered Velocity & Non-Jittery Dynamics ───
@@ -1216,7 +1421,14 @@ function LumiSceneContent({
       animDataRef.current.floorGlowOpacity = DESKTOP_KEYFRAMES[7].floorGlowOpacity * (floatChapter >= 6.35 && floatChapter <= 7.65 ? 1 : 0);
       animDataRef.current.fadeOpacity = fadeOpacityRef.current;
     }
-  });
+
+    // Desktop render pass
+    state.gl.setScissorTest(false);
+    state.gl.setViewport(0, 0, state.gl.domElement.width, state.gl.domElement.height);
+    state.camera.aspect = state.size.width / state.size.height;
+    state.camera.updateProjectionMatrix();
+    state.gl.render(state.scene, state.camera);
+  }, 1);
 
   return (
     <>
@@ -1287,7 +1499,9 @@ export function LumiScene({
     }
   }, []);
 
-  if (!isWebGLAvailable) {
+  const isLowEnd = useIsLowEndDevice();
+
+  if (!isWebGLAvailable || isLowEnd) {
     return null;
   }
 
@@ -1326,3 +1540,23 @@ export function LumiScene({
     </div>
   );
 }
+
+export function useIsLowEndDevice(): boolean {
+  const [isLowEnd, setIsLowEnd] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const nav = navigator as any;
+    const isLite =
+      (nav.deviceMemory && nav.deviceMemory <= 4) ||
+      (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) ||
+      (nav.connection && nav.connection.saveData) ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (isLite) {
+      setIsLowEnd(true);
+    }
+  }, []);
+
+  return isLowEnd;
+}
+

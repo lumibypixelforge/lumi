@@ -46,11 +46,32 @@ export function Footer() {
   return (
     <footer
       id="site-footer"
-      className="border-t border-border bg-surface relative z-20 pt-20 pb-16"
+      className="border-t border-border bg-surface relative z-20 py-4 md:pt-20 md:pb-16"
       role="contentinfo"
     >
       <div className="container-lg">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+        {/* Mobile: Compact single column (Section 5) */}
+        <div className="flex flex-col md:hidden items-center text-center space-y-2">
+          <Link href="/" className="inline-block no-underline" aria-label="LUMI Home">
+            <LumiLogo size="sm" />
+          </Link>
+          <p className="text-xs font-semibold text-ink">Stay close, from anywhere.</p>
+          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 pt-1.5 border-t border-border/60 w-full text-xs">
+            <Link href="/#meet" className="text-muted hover:text-ink no-underline py-1 inline-flex items-center">Meet LUMI</Link>
+            <Link href="/#see" className="text-muted hover:text-ink no-underline py-1 inline-flex items-center">Vision</Link>
+            <Link href="/#specs" className="text-muted hover:text-ink no-underline py-1 inline-flex items-center">Specs</Link>
+            <Link href="/preorder" className="text-accent font-semibold hover:text-accent-hover no-underline py-1 inline-flex items-center">Pre-Order</Link>
+            <Link href="/privacy" className="text-muted hover:text-ink no-underline py-1 inline-flex items-center">Privacy</Link>
+            <Link href="/terms" className="text-muted hover:text-ink no-underline py-1 inline-flex items-center">Terms</Link>
+            <a href={`mailto:${siteConfig.contact.email}`} className="text-muted hover:text-ink no-underline py-1 inline-flex items-center">Support</a>
+          </div>
+          <p className="text-[11px] font-mono text-muted pt-1">
+            © 2026 {cleanCompanyName}. All rights reserved.
+          </p>
+        </div>
+
+        {/* Desktop: 4-Column Layout (Preserved >= 768px) */}
+        <div className="hidden md:grid md:grid-cols-4 gap-12">
           {/* Brand & Balanced Tagline */}
           <div className="md:col-span-1 space-y-3">
             <Link href="/" className="inline-block no-underline">
@@ -109,7 +130,7 @@ export function Footer() {
         </div>
 
         {/* Bottom Bar: Copyright at 14px muted */}
-        <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="hidden md:flex mt-16 pt-8 border-t border-border flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-muted text-sm">
             © 2026 {cleanCompanyName}. All rights reserved.
           </p>
