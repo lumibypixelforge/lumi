@@ -26,6 +26,7 @@ import {
   interpolateEyeParams,
 } from './eye-engine';
 import type { LumiMood } from './eye-engine';
+import { scrollStore } from '../providers/smooth-scroll';
 
 export interface LumiSceneAnimationData {
   mood: LumiMood;
@@ -217,8 +218,8 @@ export function LumiGLBModel({
     if (typeof document === 'undefined') return;
 
     const canvas = document.createElement('canvas');
-    canvas.width = 1536;
-    canvas.height = 1371;
+    canvas.width = 768;
+    canvas.height = 686;
     screenCanvasRef.current = canvas;
 
     const ctx = canvas.getContext('2d');
@@ -408,16 +409,16 @@ export function LumiGLBModel({
     }
 
     // 4. Redraw face texture:
-    // During active animations (blinking, glancing, morphing, hopping), redraw at native display rate (up to 120fps).
-    // During static idle, throttle to 30fps to maintain power efficiency.
+    // When actively scrolling, throttle face redraws so touch momentum and R3F have 100% frame budget.
+    // During active facial animations (blinking, morphing), redraw at 30fps.
+    // During static idle, throttle to 15fps.
     const isActivelyAnimating =
       morphProgressRef.current < 1.0 ||
-      Math.abs(currentOpenness - 1.0) > 0.01 ||
-      Math.abs(currentLookX) > 0.01 ||
-      Math.abs(currentLookY) > 0.01 ||
-      Math.abs(currentScale - 1.0) > 0.01;
+      Math.abs(currentOpenness - 1.0) > 0.02 ||
+      Math.abs(currentScale - 1.0) > 0.02;
 
-    const minRedrawInterval = isActivelyAnimating ? 0.008 : 0.033;
+    const isScrolling = scrollStore.isScrolling;
+    const minRedrawInterval = isScrolling ? 0.05 : isActivelyAnimating ? 0.033 : 0.066;
 
     if (now - lastDrawTimeRef.current >= minRedrawInterval) {
       lastDrawTimeRef.current = now;

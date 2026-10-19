@@ -135,9 +135,9 @@ function HeroChapter({
   };
 
   return (
-    <section id="hero" className="chapter min-h-screen flex items-start lg:items-center relative pt-1 sm:pt-24 pb-3 sm:pb-12">
+    <section id="hero" className="chapter min-h-screen flex items-start lg:items-center relative pt-0 sm:pt-24 pb-3 sm:pb-12">
       <div className="container-lg">
-        {/* Robot Stage on top for mobile (<768px): clamp(270px, 38svh, 340px) */}
+        {/* Robot Stage on top for mobile (<768px): clamp(170px, 24svh, 210px) */}
         <RobotStage chapter={1} className="robot-stage-hero" isLiteMode={isLiteMode} />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">

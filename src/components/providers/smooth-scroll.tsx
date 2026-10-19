@@ -40,7 +40,8 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     // Check prefers-reduced-motion
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // Initialize Lenis smooth scroll
+    // Initialize Lenis smooth scroll for desktop wheel/trackpad.
+    // Touch scrolling is kept 100% native (syncTouch: false) for 120Hz/60Hz compositor momentum.
     const lenis = new Lenis({
       duration: prefersReducedMotion ? 0.1 : 1.15,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -48,7 +49,7 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       gestureOrientation: 'vertical',
       smoothWheel: !prefersReducedMotion,
       wheelMultiplier: 0.95,
-      touchMultiplier: 1.5,
+      syncTouch: false,
     });
 
     scrollStore.lenisInstance = lenis;
@@ -65,9 +66,8 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       scrollStore.lastScrollTime = now;
     });
 
-    // Native fallback scroll listener (only when Lenis is inactive)
+    // Native scroll listener (keeps scrollStore.y updated in real-time during touch scrolling)
     const onNativeScroll = () => {
-      if (scrollStore.lenisInstance) return;
       const curY = window.scrollY;
       const deltaY = curY - scrollStore.y;
       scrollStore.direction = deltaY >= 0 ? 1 : -1;

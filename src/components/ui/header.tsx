@@ -14,7 +14,6 @@ export function Header() {
   }
   const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [scrollProgress, setScrollProgress] = useState(0);
   const [pricingApproved, setPricingApproved] = useState(false);
   const [preordersOpen, setPreordersOpen] = useState(false);
   const isPreorderPage = pathname === '/preorder';
@@ -48,26 +47,38 @@ export function Header() {
   }, []);
 
   const [headerVisible, setHeaderVisible] = useState(true);
+  const headerVisibleRef = useRef(true);
   const lastScrollYRef = useRef(0);
+  const progressBarRef = useRef<HTMLDivElement>(null);
 
   // Scroll detection: 2px progress bar at very top, hide header on scroll down > 80px, return on scroll up
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      if (maxScroll > 0) {
-        setScrollProgress(Math.min(100, Math.max(0, (currentScrollY / maxScroll) * 100)));
+      if (maxScroll > 0 && progressBarRef.current) {
+        const pct = Math.min(100, Math.max(0, (currentScrollY / maxScroll) * 100));
+        progressBarRef.current.style.width = `${pct}%`;
       }
 
       if (currentScrollY <= 80) {
-        setHeaderVisible(true);
+        if (!headerVisibleRef.current) {
+          headerVisibleRef.current = true;
+          setHeaderVisible(true);
+        }
       } else {
         if (currentScrollY > lastScrollYRef.current) {
           // Scrolling down after 80px: hide
-          setHeaderVisible(false);
+          if (headerVisibleRef.current) {
+            headerVisibleRef.current = false;
+            setHeaderVisible(false);
+          }
         } else if (currentScrollY < lastScrollYRef.current) {
           // Scrolling up: show
-          setHeaderVisible(true);
+          if (!headerVisibleRef.current) {
+            headerVisibleRef.current = true;
+            setHeaderVisible(true);
+          }
         }
       }
       lastScrollYRef.current = currentScrollY;
@@ -139,8 +150,9 @@ export function Header() {
     <>
       {/* 2px progress line stays at the very top of the screen */}
       <div
+        ref={progressBarRef}
         className="fixed top-0 left-0 right-0 h-[2px] bg-accent z-[101] pointer-events-none transition-all duration-75"
-        style={{ width: `${scrollProgress}%` }}
+        style={{ width: '0%' }}
         aria-hidden="true"
       />
 

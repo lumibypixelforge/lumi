@@ -318,6 +318,7 @@ function LumiSceneContent({
   const ambientLightRef = useRef<THREE.AmbientLight>(null!);
   const directionalLightRef = useRef<THREE.DirectionalLight>(null!);
   const mobileStageStateRef = useRef<Record<number, { x: number; yaw: number; wheelSpin: number; vx?: number; roll?: number; pitch?: number }>>({});
+  const stageElementsMapRef = useRef<Record<number, HTMLElement>>({});
 
   const initialKeyframe = isMobile ? MOBILE_KEYFRAMES[1] : isTablet ? TABLET_KEYFRAMES[1] : DESKTOP_KEYFRAMES[1];
   const initialStageX = initialKeyframe.x;
@@ -659,15 +660,10 @@ function LumiSceneContent({
     if (isMobileNow) {
       if (typeof document === 'undefined') return;
 
-      const stageElements = Array.from(document.querySelectorAll<HTMLElement>('.robot-stage'));
-      if (stageElements.length === 0) {
-        state.gl.autoClear = true;
-        state.gl.clear();
-        return;
-      }
-
-      state.gl.autoClear = false;
-      state.gl.clear();
+      const winH = window.innerHeight;
+      const winW = window.innerWidth;
+      const travelRange = 1.85;
+      const wheelRadius = 0.12;
 
       // Tap Hop with squash & stretch (Disney 12 animation principles)
       let hopY = 0;
@@ -767,23 +763,77 @@ function LumiSceneContent({
         eyeOpen = 1.25;
       }
 
-      const winH = window.innerHeight;
-      const winW = window.innerWidth;
-      const travelRange = 1.85;
-      const wheelRadius = 0.12;
-
-      // Identify currently focused chapter (closest to viewport center) for face mood
-      let focusedChapter = 1;
-      let minCenterDist = Infinity;
-      stageElements.forEach((el) => {
-        const r = el.getBoundingClientRect();
-        const dist = Math.abs(r.top + r.height * 0.5 - winH * 0.5);
-        if (dist < minCenterDist) {
-          minCenterDist = dist;
-          focusedChapter = parseInt(el.getAttribute('data-chapter') || '1', 10);
+      // Fast cached stage retrieval: zero querySelectorAll layout thrashing
+      let chapter = activeChapter;
+      let activeStageEl = stageElementsMapRef.current[chapter];
+      if (!activeStageEl || !activeStageEl.isConnected) {
+        const el = document.querySelector<HTMLElement>(`.robot-stage[data-chapter="${chapter}"]`);
+        if (el) {
+          stageElementsMapRef.current[chapter] = el;
+          activeStageEl = el;
         }
-      });
+      }
 
+      if (!activeStageEl) {
+        state.gl.autoClear = true;
+        state.gl.clear();
+        state.gl.setScissorTest(false);
+        return;
+      }
+
+      let rect = activeStageEl.getBoundingClientRect();
+
+      // If activeChapter stage has scrolled off screen, check adjacent chapter without looping all 9
+      if (rect.bottom < 0 && chapter < 9) {
+        const nextCh = chapter + 1;
+        let nextEl = stageElementsMapRef.current[nextCh];
+        if (!nextEl || !nextEl.isConnected) {
+          const el = document.querySelector<HTMLElement>(`.robot-stage[data-chapter="${nextCh}"]`);
+          if (el) {
+            stageElementsMapRef.current[nextCh] = el;
+            nextEl = el;
+          }
+        }
+        if (nextEl) {
+          const nextRect = nextEl.getBoundingClientRect();
+          if (nextRect.top < winH && nextRect.bottom > 0) {
+            chapter = nextCh;
+            activeStageEl = nextEl;
+            rect = nextRect;
+          }
+        }
+      } else if (rect.top > winH && chapter > 1) {
+        const prevCh = chapter - 1;
+        let prevEl = stageElementsMapRef.current[prevCh];
+        if (!prevEl || !prevEl.isConnected) {
+          const el = document.querySelector<HTMLElement>(`.robot-stage[data-chapter="${prevCh}"]`);
+          if (el) {
+            stageElementsMapRef.current[prevCh] = el;
+            prevEl = el;
+          }
+        }
+        if (prevEl) {
+          const prevRect = prevEl.getBoundingClientRect();
+          if (prevRect.top < winH && prevRect.bottom > 0) {
+            chapter = prevCh;
+            activeStageEl = prevEl;
+            rect = prevRect;
+          }
+        }
+      }
+
+      // Only render if the active stage is partially or fully on screen
+      if (rect.bottom < 0 || rect.top > winH) {
+        state.gl.autoClear = true;
+        state.gl.clear();
+        state.gl.setScissorTest(false);
+        return;
+      }
+
+      state.gl.autoClear = false;
+      state.gl.clear();
+
+      const focusedChapter = chapter;
       const currentStageMood: LumiMood = isHopping
         ? 'excited'
         : focusedChapter === 5
@@ -792,25 +842,6 @@ function LumiSceneContent({
 
       if (animDataRef.current) {
         animDataRef.current.mood = currentStageMood;
-      }
-
-      // Render strictly ONE LUMI model on mobile in the currently focused stage
-      const activeStageEl = stageElements.find(
-        (el) => parseInt(el.getAttribute('data-chapter') || '1', 10) === focusedChapter
-      );
-
-      if (!activeStageEl) {
-        state.gl.setScissorTest(false);
-        return;
-      }
-
-      const chapter = focusedChapter;
-      const rect = activeStageEl.getBoundingClientRect();
-
-      // Only render if the active stage is partially or fully on screen
-      if (rect.bottom < 0 || rect.top > winH) {
-        state.gl.setScissorTest(false);
-        return;
       }
 
       // t = stage center vertical position as fraction of viewport height (0 at top, 1 at bottom)
@@ -854,21 +885,21 @@ function LumiSceneContent({
         targetWheelSpin = (2 * travelRange) / wheelRadius;
       }
 
-      // Critically damped, organic smoothing (absorbs finger micro-vibrations)
+      // Critically damped, organic smoothing (snappy touch tracking with zero jitter)
       if (!mobileStageStateRef.current[chapter]) {
         mobileStageStateRef.current[chapter] = { x: targetX, yaw: targetYaw, wheelSpin: targetWheelSpin, vx: 0, roll: 0, pitch: 0 };
       }
       const st = mobileStageStateRef.current[chapter];
       const prevX = st.x;
-      st.x = THREE.MathUtils.lerp(st.x, targetX, 1 - Math.exp(-9.5 * safeDelta));
-      st.yaw = lerpAngle(st.yaw, targetYaw, 1 - Math.exp(-10.5 * safeDelta));
-      st.wheelSpin = THREE.MathUtils.lerp(st.wheelSpin, targetWheelSpin, 1 - Math.exp(-12 * safeDelta));
+      st.x = THREE.MathUtils.lerp(st.x, targetX, 1 - Math.exp(-14 * safeDelta));
+      st.yaw = lerpAngle(st.yaw, targetYaw, 1 - Math.exp(-14 * safeDelta));
+      st.wheelSpin = THREE.MathUtils.lerp(st.wheelSpin, targetWheelSpin, 1 - Math.exp(-15 * safeDelta));
 
       // Calculate smooth velocity for organic banking roll and acceleration pitch
       const rawVx = (st.x - prevX) / Math.max(safeDelta, 0.001);
-      st.vx = THREE.MathUtils.lerp(st.vx || 0, rawVx, 1 - Math.exp(-8 * safeDelta));
-      st.roll = THREE.MathUtils.lerp(st.roll || 0, THREE.MathUtils.clamp(-st.vx * 0.022, -0.045, 0.045), 1 - Math.exp(-10 * safeDelta));
-      st.pitch = THREE.MathUtils.lerp(st.pitch || 0, THREE.MathUtils.clamp(st.vx * 0.012, -0.025, 0.025), 1 - Math.exp(-10 * safeDelta));
+      st.vx = THREE.MathUtils.lerp(st.vx || 0, rawVx, 1 - Math.exp(-12 * safeDelta));
+      st.roll = THREE.MathUtils.lerp(st.roll || 0, THREE.MathUtils.clamp(-st.vx * 0.022, -0.045, 0.045), 1 - Math.exp(-12 * safeDelta));
+      st.pitch = THREE.MathUtils.lerp(st.pitch || 0, THREE.MathUtils.clamp(st.vx * 0.012, -0.025, 0.025), 1 - Math.exp(-12 * safeDelta));
 
       // Idle float & hop
       const idleY = Math.sin(t * 1.8) * 0.02;
@@ -889,9 +920,11 @@ function LumiSceneContent({
       }
 
       // Position model and shadow with safe scale (fits ~75% stage height, whole robot + shadow visible)
-      // Vertical offset +0.16 ensures generous headroom so the top of LUMI's head is never cut off
-      const stageScale = 0.80;
-      const stageCenterYOffset = 0.16;
+      // Hero chapter has compact headroom (stageCenterYOffset = 0.08, scale = 0.78) reducing top blank space
+      // Other chapters maintain generous headroom (stageCenterYOffset = 0.16, scale = 0.80) to eliminate cutting
+      const isHero = chapter === 1;
+      const stageScale = isHero ? 0.78 : 0.80;
+      const stageCenterYOffset = isHero ? 0.08 : 0.16;
       modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
       modelGroupRef.current.rotation.set(st.pitch, st.yaw, st.roll);
       modelGroupRef.current.scale.set(stageScale * hopSquashXZ, stageScale * hopSquashY, stageScale * hopSquashXZ);

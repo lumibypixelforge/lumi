@@ -489,7 +489,8 @@ body {
   }
 
   .robot-stage.robot-stage-hero {
-    height: clamp(270px, 38svh, 340px);
+    height: clamp(170px, 24svh, 210px);
+    margin: 0 0 4px 0;
   }
 
   .robot-stage.robot-stage-mood {
@@ -528,7 +529,7 @@ body {
   #hero.chapter,
   #hero.section {
     min-height: auto !important;
-    padding-top: 2px !important;
+    padding-top: 0 !important;
     padding-bottom: 6px !important;
   }
 
