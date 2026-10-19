@@ -764,7 +764,8 @@ function LumiSceneContent({
       }
 
       // Fast cached stage retrieval: zero querySelectorAll layout thrashing
-      let chapter = activeChapter;
+      // On mobile, if scrollY < 80, force chapter 1 (Hero) so page load is 100% reliable
+      let chapter = (typeof window !== 'undefined' && window.scrollY < 80) ? 1 : activeChapter;
       let activeStageEl = stageElementsMapRef.current[chapter];
       if (!activeStageEl || !activeStageEl.isConnected) {
         const el = document.querySelector<HTMLElement>(`.robot-stage[data-chapter="${chapter}"]`);
@@ -853,36 +854,57 @@ function LumiSceneContent({
       let targetWheelSpin = 0;
       let inHold = false;
 
-      if (tVal > 0.92) {
-        targetX = -travelRange;
-        targetYaw = 0.26;
-        targetWheelSpin = 0;
-      } else if (tVal >= 0.72) {
-        // Enter: 0.92 -> 0.72 with zero-jerk quintic smootherstep
-        const u = smootherstep((0.92 - tVal) / 0.20);
-        targetX = -travelRange * (1 - u);
-        targetYaw = 0.26 * (1 - u);
-        targetWheelSpin = (travelRange * u) / wheelRadius;
-      } else if (tVal > 0.16) {
-        // Hold: 0.72 -> 0.16 (centered, faces reader during whole chapter reading dwell)
-        inHold = true;
-        targetX = 0;
-        targetYaw = 0;
-        let extraSpin = 0;
-        if (chapter === 6) {
-          extraSpin = t * 2.2;
+      if (chapter === 1) {
+        // Hero Section: Model is ALWAYS visible, centered, and facing user on page load
+        if (tVal >= 0.05) {
+          inHold = true;
+          targetX = 0;
+          targetYaw = 0;
+          targetWheelSpin = 0;
+        } else if (tVal >= -0.15) {
+          // Exit when hero stage scrolls off the top of the viewport
+          const v = smootherstep((0.05 - tVal) / 0.20);
+          targetX = travelRange * v;
+          targetYaw = 0.26 * v;
+          targetWheelSpin = (travelRange * v) / wheelRadius;
+        } else {
+          targetX = travelRange;
+          targetYaw = 0.26;
+          targetWheelSpin = travelRange / wheelRadius;
         }
-        targetWheelSpin = (travelRange / wheelRadius) + extraSpin;
-      } else if (tVal >= -0.05) {
-        // Exit: 0.16 -> -0.05 with zero-jerk quintic smootherstep
-        const v = smootherstep((0.16 - tVal) / 0.21);
-        targetX = travelRange * v;
-        targetYaw = 0.26 * v;
-        targetWheelSpin = (travelRange / wheelRadius) + (travelRange * v) / wheelRadius;
       } else {
-        targetX = travelRange;
-        targetYaw = 0.26;
-        targetWheelSpin = (2 * travelRange) / wheelRadius;
+        // Chapters 2 to 9: Enter from left (0.92 -> 0.72), dwell centered, exit to right
+        if (tVal > 0.92) {
+          targetX = -travelRange;
+          targetYaw = 0.26;
+          targetWheelSpin = 0;
+        } else if (tVal >= 0.72) {
+          // Enter: 0.92 -> 0.72 with zero-jerk quintic smootherstep
+          const u = smootherstep((0.92 - tVal) / 0.20);
+          targetX = -travelRange * (1 - u);
+          targetYaw = 0.26 * (1 - u);
+          targetWheelSpin = (travelRange * u) / wheelRadius;
+        } else if (tVal > 0.16) {
+          // Hold: 0.72 -> 0.16 (centered, faces reader during whole chapter reading dwell)
+          inHold = true;
+          targetX = 0;
+          targetYaw = 0;
+          let extraSpin = 0;
+          if (chapter === 6) {
+            extraSpin = t * 2.2;
+          }
+          targetWheelSpin = (travelRange / wheelRadius) + extraSpin;
+        } else if (tVal >= -0.05) {
+          // Exit: 0.16 -> -0.05 with zero-jerk quintic smootherstep
+          const v = smootherstep((0.16 - tVal) / 0.21);
+          targetX = travelRange * v;
+          targetYaw = 0.26 * v;
+          targetWheelSpin = (travelRange / wheelRadius) + (travelRange * v) / wheelRadius;
+        } else {
+          targetX = travelRange;
+          targetYaw = 0.26;
+          targetWheelSpin = (2 * travelRange) / wheelRadius;
+        }
       }
 
       // Critically damped, organic smoothing (snappy touch tracking with zero jitter)
@@ -920,11 +942,10 @@ function LumiSceneContent({
       }
 
       // Position model and shadow with safe scale (fits ~75% stage height, whole robot + shadow visible)
-      // Hero chapter has compact headroom (stageCenterYOffset = 0.08, scale = 0.78) reducing top blank space
-      // Other chapters maintain generous headroom (stageCenterYOffset = 0.16, scale = 0.80) to eliminate cutting
-      const isHero = chapter === 1;
-      const stageScale = isHero ? 0.78 : 0.80;
-      const stageCenterYOffset = isHero ? 0.08 : 0.16;
+      // stageScale = 0.78 fits comfortably in stage height with clean margins
+      // stageCenterYOffset = 0.22 centers LUMI's visual bounding box (head to wheels) exactly at y=0 (middle of the stage)
+      const stageScale = 0.78;
+      const stageCenterYOffset = 0.22;
       modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
       modelGroupRef.current.rotation.set(st.pitch, st.yaw, st.roll);
       modelGroupRef.current.scale.set(stageScale * hopSquashXZ, stageScale * hopSquashY, stageScale * hopSquashXZ);

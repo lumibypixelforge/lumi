@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { LumiLogo } from '@/components/ui/lumi-logo';
 
 interface AdminMeData {
   user: {
@@ -121,7 +122,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Mobile Top Header (below 1024px) */}
       <header className="lg:hidden bg-card border-b border-border px-4 py-2.5 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm tracking-tight text-ink font-display">LUMI Admin</span>
+          <LumiLogo size="xs" className="text-ink" />
+          <span className="font-semibold text-xs text-muted font-mono tracking-wide">ADMIN</span>
           <span
             className={`text-[10px] font-mono px-1.5 py-0.5 rounded-[4px] font-medium ${
               env === 'Production'
@@ -170,9 +172,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Brand Wordmark & Environment Badges */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-base tracking-tight text-ink font-display">
-                LUMI Admin
-              </span>
+              <div className="flex items-center gap-2">
+                <LumiLogo size="xs" className="text-ink" />
+                <span className="font-semibold text-xs text-muted font-mono tracking-wide">ADMIN</span>
+              </div>
               <button
                 onClick={() => setDrawerOpen(false)}
                 className="lg:hidden p-1 text-muted hover:text-ink"

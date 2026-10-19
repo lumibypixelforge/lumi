@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { LumiLogo } from '@/components/ui/lumi-logo';
 
 function AdminLoginForm() {
   const router = useRouter();
@@ -98,9 +99,7 @@ function AdminLoginForm() {
         {/* Admin Header */}
         <div className="text-center">
           <div className="inline-flex items-center gap-2 mb-2">
-            <span className="font-semibold text-xl tracking-tight text-ink font-display">
-              LUMI
-            </span>
+            <LumiLogo size="sm" className="text-ink" />
             <span className="bg-[#6420AA] text-white text-[11px] font-mono px-2 py-0.5 rounded-[4px] font-medium tracking-wide">
               ADMIN
             </span>

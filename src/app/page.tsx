@@ -37,6 +37,7 @@ import { PRODUCT_FACTS, DEFAULT_PRICING, formatPrice, getBalancePaise } from '@/
 import type { LumiMood } from '@/components/3d/eye-engine';
 import { MobileCTABar } from '@/components/ui/mobile-cta-bar';
 import { ChapterIndicator } from '@/components/ui/chapter-indicator';
+import { LumiLogo } from '@/components/ui/lumi-logo';
 
 import { useIsLowEndDevice } from '@/components/3d/lumi-scene';
 
@@ -149,10 +150,11 @@ function HeroChapter({
             </p>
 
             {/* Giant Wordmark */}
-            <h1 className="text-ink text-[clamp(44px,11vw,64px)] sm:text-7xl lg:text-[clamp(96px,14vw,220px)] font-bold tracking-tight leading-[0.9] mb-3 sm:mb-6 select-none">
-              <span className="inline-block animate-[fadeRise_0.85s_ease-out_forwards]">
-                LUMI
-              </span>
+            <h1 className="mb-3 sm:mb-6 select-none flex items-center">
+              <span className="sr-only">LUMI</span>
+              <div className="inline-block animate-[fadeRise_0.85s_ease-out_forwards]">
+                <LumiLogo size="hero" className="text-ink" />
+              </div>
             </h1>
 
             {/* Subhead: max 40-44 characters */}
@@ -1220,24 +1222,44 @@ export default function HomePage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
+        // If near the very top of the page, hero (chapter 1) always wins
+        if (typeof window !== 'undefined' && window.scrollY < 80) {
+          setActiveChapter(1);
+          return;
+        }
+
+        // Find the intersecting chapter closest to the viewport vertical center
+        let bestChapter = -1;
+        let bestDist = Infinity;
+        const winMid = window.innerHeight * 0.5;
+
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             const index = chapterIds.indexOf(entry.target.id);
             if (index !== -1) {
-              const newChapter = index + 1;
-              setActiveChapter(newChapter);
-
-              if (newChapter !== 5) {
-                setChapter5Mood('happy');
-                const defaultMood = CHAPTER_DEFAULT_MOODS[newChapter] || 'happy';
-                window.dispatchEvent(new CustomEvent('lumi:set-mood', { detail: defaultMood }));
+              const r = entry.boundingClientRect;
+              const mid = r.top + r.height * 0.5;
+              const dist = Math.abs(mid - winMid);
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestChapter = index + 1;
               }
             }
           }
         });
+
+        if (bestChapter !== -1) {
+          setActiveChapter(bestChapter);
+
+          if (bestChapter !== 5) {
+            setChapter5Mood('happy');
+            const defaultMood = CHAPTER_DEFAULT_MOODS[bestChapter] || 'happy';
+            window.dispatchEvent(new CustomEvent('lumi:set-mood', { detail: defaultMood }));
+          }
+        }
       },
       {
-        threshold: 0.35,
+        threshold: 0.20,
       }
     );
 
