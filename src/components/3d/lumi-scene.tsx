@@ -749,148 +749,157 @@ function LumiSceneContent({
         animDataRef.current.mood = currentStageMood;
       }
 
-      stageElements.forEach((stageEl) => {
-        const chapter = parseInt(stageEl.getAttribute('data-chapter') || '1', 10);
-        const rect = stageEl.getBoundingClientRect();
+      // Render strictly ONE LUMI model on mobile in the currently focused stage
+      const activeStageEl = stageElements.find(
+        (el) => parseInt(el.getAttribute('data-chapter') || '1', 10) === focusedChapter
+      );
 
-        // Mount a view only when its stage is within 1.5 screen heights of viewport
-        if (rect.bottom < -winH * 0.5 || rect.top > winH * 1.5) {
-          return;
+      if (!activeStageEl) {
+        state.gl.setScissorTest(false);
+        return;
+      }
+
+      const chapter = focusedChapter;
+      const rect = activeStageEl.getBoundingClientRect();
+
+      // Only render if the active stage is partially or fully on screen
+      if (rect.bottom < 0 || rect.top > winH) {
+        state.gl.setScissorTest(false);
+        return;
+      }
+
+      // t = stage center vertical position as fraction of viewport height (0 at top, 1 at bottom)
+      const stageCenterY = rect.top + rect.height * 0.5;
+      const tVal = stageCenterY / winH;
+
+      let targetX = 0;
+      let targetYaw = 0;
+      let targetWheelSpin = 0;
+      let inHold = false;
+
+      if (tVal > 0.92) {
+        targetX = -travelRange;
+        targetYaw = 0.26;
+        targetWheelSpin = 0;
+      } else if (tVal >= 0.72) {
+        // Enter: 0.92 -> 0.72 (LUMI drives in from left edge to center with ease-out, 15 deg yaw lean)
+        const u = (0.92 - tVal) / 0.20;
+        const easeOut = 1 - Math.pow(1 - u, 3);
+        targetX = -travelRange * (1 - easeOut);
+        targetYaw = 0.26 * (1 - easeOut);
+        targetWheelSpin = (travelRange * easeOut) / wheelRadius;
+      } else if (tVal > 0.16) {
+        // Hold: 0.72 -> 0.16 (centered, faces reader during whole chapter reading dwell)
+        inHold = true;
+        targetX = 0;
+        targetYaw = 0;
+        let extraSpin = 0;
+        if (chapter === 6) {
+          extraSpin = t * 2.2;
+        }
+        targetWheelSpin = (travelRange / wheelRadius) + extraSpin;
+      } else if (tVal >= -0.05) {
+        // Exit: 0.16 -> -0.05 (turns 15 deg yaw, drives out of right edge with ease-in as stage scrolls off top)
+        const v = (0.16 - tVal) / 0.21;
+        const easeIn = Math.pow(v, 3);
+        targetX = travelRange * easeIn;
+        targetYaw = 0.26 * easeIn;
+        targetWheelSpin = (travelRange / wheelRadius) + (travelRange * easeIn) / wheelRadius;
+      } else {
+        targetX = travelRange;
+        targetYaw = 0.26;
+        targetWheelSpin = (2 * travelRange) / wheelRadius;
+      }
+
+      // Frame-rate independent smoothing step
+      if (!mobileStageStateRef.current[chapter]) {
+        mobileStageStateRef.current[chapter] = { x: targetX, yaw: targetYaw, wheelSpin: targetWheelSpin };
+      }
+      const st = mobileStageStateRef.current[chapter];
+      st.x = THREE.MathUtils.lerp(st.x, targetX, 1 - Math.exp(-18 * safeDelta));
+      st.yaw = lerpAngle(st.yaw, targetYaw, 1 - Math.exp(-18 * safeDelta));
+      st.wheelSpin = THREE.MathUtils.lerp(st.wheelSpin, targetWheelSpin, 1 - Math.exp(-22 * safeDelta));
+
+      // Idle float & hop
+      const idleY = Math.sin(t * 1.8) * 0.02;
+      const currentY = idleY + hopY;
+
+      // Props for chapters (inside stage only, no particles)
+      const soundOp = chapter === 4 && inHold ? 1.0 : 0.0;
+      const trailOp = chapter === 6 && inHold ? 1.0 : 0.0;
+      const glowOp = chapter === 7 && inHold ? 1.0 : 0.0;
+
+      // Lighting for Ch 07 dark background
+      if (chapter === 7) {
+        if (ambientLightRef.current) ambientLightRef.current.intensity = 0.55;
+        if (directionalLightRef.current) directionalLightRef.current.intensity = 0.65;
+      } else {
+        if (ambientLightRef.current) ambientLightRef.current.intensity = 0.9;
+        if (directionalLightRef.current) directionalLightRef.current.intensity = 1.1;
+      }
+
+      // Position model and shadow with safe scale (fits ~78% stage height, whole robot + shadow visible)
+      // Vertical offset +0.52 counters model internal -0.55 offset, perfectly centering robot vertically in stage
+      const stageScale = 0.88;
+      const stageCenterYOffset = 0.52;
+      modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
+      modelGroupRef.current.rotation.set(0, st.yaw, 0);
+      modelGroupRef.current.scale.setScalar(stageScale);
+      modelGroupRef.current.visible = true;
+
+      if (shadowGroupRef.current) {
+        shadowGroupRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
+        shadowGroupRef.current.rotation.set(0, st.yaw, 0);
+        shadowGroupRef.current.scale.setScalar(stageScale);
+      }
+
+      if (heroDiscRef.current) {
+        heroDiscRef.current.visible = chapter === 1;
+        if (chapter === 1) {
+          heroDiscRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
+          heroDiscRef.current.scale.setScalar(0.42);
+        }
+      }
+
+      // Update animData for this stage render pass
+      if (animDataRef.current) {
+        animDataRef.current.eyeLookX = eyeLookX;
+        animDataRef.current.eyeLookY = eyeLookY;
+        animDataRef.current.eyeOpenness = eyeOpen;
+        animDataRef.current.eyeScale = isHopping ? 1.15 : 1.0;
+        animDataRef.current.wheelSpinL = st.wheelSpin;
+        animDataRef.current.wheelSpinR = st.wheelSpin;
+        animDataRef.current.soundRingsOpacity = soundOp;
+        animDataRef.current.dottedTrailOpacity = trailOp;
+        animDataRef.current.floorGlowOpacity = glowOp;
+        animDataRef.current.fadeOpacity = 1.0;
+      }
+
+      // Scissor & Viewport setup (0,0 is bottom-left in WebGL)
+      // Three.js setScissor and setViewport accept CSS pixels and multiply by _pixelRatio internally.
+      const sx = Math.round(rect.left);
+      const sy = Math.round(winH - rect.bottom);
+      const sw = Math.round(rect.width);
+      const sh = Math.round(rect.height);
+
+      // Clamp tightly within viewport bounds [0, winW] and [0, winH] to guarantee no bleed
+      const clampedX = Math.max(0, sx);
+      const clampedY = Math.max(0, sy);
+      const clampedW = Math.max(0, Math.min(winW - clampedX, sw));
+      const clampedH = Math.max(0, Math.min(winH - clampedY, sh));
+
+      if (clampedW > 0 && clampedH > 0) {
+        state.gl.setScissorTest(true);
+        state.gl.setScissor(clampedX, clampedY, clampedW, clampedH);
+        state.gl.setViewport(sx, sy, sw, sh);
+
+        if ('aspect' in state.camera) {
+          (state.camera as THREE.PerspectiveCamera).aspect = rect.width / rect.height;
+          state.camera.updateProjectionMatrix();
         }
 
-        // t = stage center vertical position as fraction of viewport height (0 at top, 1 at bottom)
-        const stageCenterY = rect.top + rect.height * 0.5;
-        const tVal = stageCenterY / winH;
-
-        let targetX = 0;
-        let targetYaw = 0;
-        let targetWheelSpin = 0;
-        let inHold = false;
-
-        if (tVal > 0.92) {
-          targetX = -travelRange;
-          targetYaw = 0.26;
-          targetWheelSpin = 0;
-        } else if (tVal >= 0.72) {
-          // Enter: 0.92 -> 0.72 (LUMI drives in from left edge to center with ease-out, 15 deg yaw lean)
-          const u = (0.92 - tVal) / 0.20;
-          const easeOut = 1 - Math.pow(1 - u, 3);
-          targetX = -travelRange * (1 - easeOut);
-          targetYaw = 0.26 * (1 - easeOut);
-          targetWheelSpin = (travelRange * easeOut) / wheelRadius;
-        } else if (tVal > 0.16) {
-          // Hold: 0.72 -> 0.16 (centered, faces reader during whole chapter reading dwell)
-          inHold = true;
-          targetX = 0;
-          targetYaw = 0;
-          let extraSpin = 0;
-          if (chapter === 6) {
-            extraSpin = t * 2.2;
-          }
-          targetWheelSpin = (travelRange / wheelRadius) + extraSpin;
-        } else if (tVal >= -0.05) {
-          // Exit: 0.16 -> -0.05 (turns 15 deg yaw, drives out of right edge with ease-in as stage scrolls off top)
-          const v = (0.16 - tVal) / 0.21;
-          const easeIn = Math.pow(v, 3);
-          targetX = travelRange * easeIn;
-          targetYaw = 0.26 * easeIn;
-          targetWheelSpin = (travelRange / wheelRadius) + (travelRange * easeIn) / wheelRadius;
-        } else {
-          targetX = travelRange;
-          targetYaw = 0.26;
-          targetWheelSpin = (2 * travelRange) / wheelRadius;
-        }
-
-        // Frame-rate independent smoothing step
-        if (!mobileStageStateRef.current[chapter]) {
-          mobileStageStateRef.current[chapter] = { x: targetX, yaw: targetYaw, wheelSpin: targetWheelSpin };
-        }
-        const st = mobileStageStateRef.current[chapter];
-        st.x = THREE.MathUtils.lerp(st.x, targetX, 1 - Math.exp(-18 * safeDelta));
-        st.yaw = lerpAngle(st.yaw, targetYaw, 1 - Math.exp(-18 * safeDelta));
-        st.wheelSpin = THREE.MathUtils.lerp(st.wheelSpin, targetWheelSpin, 1 - Math.exp(-22 * safeDelta));
-
-        // Idle float & hop
-        const idleY = Math.sin(t * 1.8) * 0.02;
-        const currentY = idleY + hopY;
-
-        // Props for chapters (inside stage only, no particles)
-        const soundOp = chapter === 4 && inHold ? 1.0 : 0.0;
-        const trailOp = chapter === 6 && inHold ? 1.0 : 0.0;
-        const glowOp = chapter === 7 && inHold ? 1.0 : 0.0;
-
-        // Lighting for Ch 07 dark background
-        if (chapter === 7) {
-          if (ambientLightRef.current) ambientLightRef.current.intensity = 0.55;
-          if (directionalLightRef.current) directionalLightRef.current.intensity = 0.65;
-        } else {
-          if (ambientLightRef.current) ambientLightRef.current.intensity = 0.9;
-          if (directionalLightRef.current) directionalLightRef.current.intensity = 1.1;
-        }
-
-        // Position model and shadow with safe scale (fits ~78% stage height, whole robot + shadow visible)
-        // Vertical offset +0.52 counters model internal -0.55 offset, perfectly centering robot vertically in stage
-        const stageScale = 0.88;
-        const stageCenterYOffset = 0.52;
-        modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
-        modelGroupRef.current.rotation.set(0, st.yaw, 0);
-        modelGroupRef.current.scale.setScalar(stageScale);
-        modelGroupRef.current.visible = true;
-
-        if (shadowGroupRef.current) {
-          shadowGroupRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
-          shadowGroupRef.current.rotation.set(0, st.yaw, 0);
-          shadowGroupRef.current.scale.setScalar(stageScale);
-        }
-
-        if (heroDiscRef.current) {
-          heroDiscRef.current.visible = chapter === 1;
-          if (chapter === 1) {
-            heroDiscRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
-            heroDiscRef.current.scale.setScalar(0.42);
-          }
-        }
-
-        // Update animData for this stage render pass
-        if (animDataRef.current) {
-          animDataRef.current.eyeLookX = eyeLookX;
-          animDataRef.current.eyeLookY = eyeLookY;
-          animDataRef.current.eyeOpenness = eyeOpen;
-          animDataRef.current.eyeScale = isHopping ? 1.15 : 1.0;
-          animDataRef.current.wheelSpinL = st.wheelSpin;
-          animDataRef.current.wheelSpinR = st.wheelSpin;
-          animDataRef.current.soundRingsOpacity = soundOp;
-          animDataRef.current.dottedTrailOpacity = trailOp;
-          animDataRef.current.floorGlowOpacity = glowOp;
-          animDataRef.current.fadeOpacity = 1.0;
-        }
-
-        // Scissor & Viewport setup (0,0 is bottom-left in WebGL)
-        // Three.js setScissor and setViewport accept CSS pixels and multiply by _pixelRatio internally.
-        const sx = Math.round(rect.left);
-        const sy = Math.round(winH - rect.bottom);
-        const sw = Math.round(rect.width);
-        const sh = Math.round(rect.height);
-
-        // Clamp tightly within viewport bounds [0, winW] and [0, winH] to guarantee no bleed
-        const clampedX = Math.max(0, sx);
-        const clampedY = Math.max(0, sy);
-        const clampedW = Math.max(0, Math.min(winW - clampedX, sw));
-        const clampedH = Math.max(0, Math.min(winH - clampedY, sh));
-
-        if (clampedW > 0 && clampedH > 0) {
-          state.gl.setScissorTest(true);
-          state.gl.setScissor(clampedX, clampedY, clampedW, clampedH);
-          state.gl.setViewport(sx, sy, sw, sh);
-
-          if ('aspect' in state.camera) {
-            (state.camera as THREE.PerspectiveCamera).aspect = rect.width / rect.height;
-            state.camera.updateProjectionMatrix();
-          }
-
-          state.gl.render(state.scene, state.camera);
-        }
-      });
+        state.gl.render(state.scene, state.camera);
+      }
 
       state.gl.setScissorTest(false);
       return;

@@ -513,10 +513,10 @@ body {
   .chapter.section,
   [id].chapter {
     position: relative;
-    min-height: auto !important;
+    min-height: 75svh !important;
     display: block !important;
-    padding-top: 8px !important;
-    padding-bottom: 8px !important;
+    padding-top: 16px !important;
+    padding-bottom: 32px !important;
     padding-left: 0 !important;
     padding-right: 0 !important;
     scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + 16px) !important;
@@ -525,6 +525,7 @@ body {
   /* Hero: stage on top, compact padding */
   #hero.chapter,
   #hero.section {
+    min-height: auto !important;
     padding-top: 2px !important;
     padding-bottom: 6px !important;
   }
