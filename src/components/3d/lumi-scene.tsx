@@ -188,6 +188,18 @@ const GAZE_WEIGHTS: Record<number, number> = {
   9: 0.6,
 };
 
+const CHAPTER_DEFAULT_MOODS: Record<number, LumiMood> = {
+  1: 'happy',
+  2: 'happy',
+  3: 'neutral',
+  4: 'happy',
+  5: 'happy',
+  6: 'excited',
+  7: 'happy',
+  8: 'neutral',
+  9: 'love',
+};
+
 // ─── Hero Floor Stage Disc & Ellipse Ring ─────────────────────────────
 
 function HeroFloorRing({
@@ -847,8 +859,10 @@ function LumiSceneContent({
           state.gl.setScissor(sx, sy, sw, sh);
           state.gl.setViewport(sx, sy, sw, sh);
 
-          state.camera.aspect = rect.width / rect.height;
-          state.camera.updateProjectionMatrix();
+          if ('aspect' in state.camera) {
+            (state.camera as THREE.PerspectiveCamera).aspect = rect.width / rect.height;
+            state.camera.updateProjectionMatrix();
+          }
 
           state.gl.render(state.scene, state.camera);
         }
@@ -1425,8 +1439,10 @@ function LumiSceneContent({
     // Desktop render pass
     state.gl.setScissorTest(false);
     state.gl.setViewport(0, 0, state.gl.domElement.width, state.gl.domElement.height);
-    state.camera.aspect = state.size.width / state.size.height;
-    state.camera.updateProjectionMatrix();
+    if ('aspect' in state.camera) {
+      (state.camera as THREE.PerspectiveCamera).aspect = state.size.width / state.size.height;
+      state.camera.updateProjectionMatrix();
+    }
     state.gl.render(state.scene, state.camera);
   }, 1);
 
