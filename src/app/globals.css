@@ -438,7 +438,7 @@ body {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 15;
+  z-index: 5;
   pointer-events: none !important;
   background: transparent !important;
   border-bottom: none !important;
@@ -527,6 +527,20 @@ body {
   #hero.section {
     padding-top: 2px !important;
     padding-bottom: 6px !important;
+  }
+
+  /* Elevate mobile text and UI components so canvas never draws over them */
+  .chapter .container-lg,
+  .chapter .grid,
+  .chapter h1,
+  .chapter h2,
+  .chapter p,
+  .compact-row,
+  .compact-row-dark,
+  .preorder-form-container,
+  .phone-mockup-wrapper {
+    position: relative;
+    z-index: 10;
   }
 
   /* Tighten mobile grid gap inside chapters */

@@ -602,6 +602,7 @@ function LumiSceneContent({
       if (newMood) {
         userMoodOverrideRef.current = newMood;
         activeMoodRef.current = newMood;
+        hopStartTimeRef.current = performance.now();
         isBlinkingRef.current = true;
         blinkProgressRef.current = 0;
         if (animDataRef.current) {
@@ -648,7 +649,9 @@ function LumiSceneContent({
     const nowMs = performance.now();
 
     // ─── Mobile Multi-Stage Scissor Test Rendering (<768px portrait) ───
-    if (isMobile) {
+    const isMobileNow = (typeof window !== 'undefined' ? window.innerWidth < 768 : state.size.width < 768) && !(state.size.height < 500);
+
+    if (isMobileNow) {
       if (typeof document === 'undefined') return;
 
       const stageElements = Array.from(document.querySelectorAll<HTMLElement>('.robot-stage'));
@@ -720,9 +723,31 @@ function LumiSceneContent({
       }
 
       const winH = window.innerHeight;
-      const dpr = Math.min(state.gl.getPixelRatio(), 1.5);
+      const winW = window.innerWidth;
       const travelRange = 1.85;
       const wheelRadius = 0.12;
+
+      // Identify currently focused chapter (closest to viewport center) for face mood
+      let focusedChapter = 1;
+      let minCenterDist = Infinity;
+      stageElements.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const dist = Math.abs(r.top + r.height * 0.5 - winH * 0.5);
+        if (dist < minCenterDist) {
+          minCenterDist = dist;
+          focusedChapter = parseInt(el.getAttribute('data-chapter') || '1', 10);
+        }
+      });
+
+      const currentStageMood: LumiMood = isHopping
+        ? 'excited'
+        : focusedChapter === 5
+        ? (userMoodOverrideRef.current || selectedMood || 'happy')
+        : (CHAPTER_DEFAULT_MOODS[focusedChapter] || 'happy');
+
+      if (animDataRef.current) {
+        animDataRef.current.mood = currentStageMood;
+      }
 
       stageElements.forEach((stageEl) => {
         const chapter = parseInt(stageEl.getAttribute('data-chapter') || '1', 10);
@@ -789,15 +814,6 @@ function LumiSceneContent({
         const idleY = Math.sin(t * 1.8) * 0.02;
         const currentY = idleY + hopY;
 
-        // Stage mood
-        let stageMood: LumiMood = (CHAPTER_DEFAULT_MOODS[chapter] || 'happy');
-        if (chapter === 5) {
-          stageMood = userMoodOverrideRef.current || selectedMood || 'happy';
-        }
-        if (isHopping) {
-          stageMood = 'excited';
-        }
-
         // Props for chapters (inside stage only, no particles)
         const soundOp = chapter === 4 && inHold ? 1.0 : 0.0;
         const trailOp = chapter === 6 && inHold ? 1.0 : 0.0;
@@ -812,8 +828,8 @@ function LumiSceneContent({
           if (directionalLightRef.current) directionalLightRef.current.intensity = 1.1;
         }
 
-        // Position model and shadow
-        const stageScale = 1.02;
+        // Position model and shadow with safe scale (fits ~78% stage height, whole robot + shadow visible)
+        const stageScale = 0.88;
         modelGroupRef.current.position.set(st.x, currentY, 0);
         modelGroupRef.current.rotation.set(0, st.yaw, 0);
         modelGroupRef.current.scale.setScalar(stageScale);
@@ -829,13 +845,12 @@ function LumiSceneContent({
           heroDiscRef.current.visible = chapter === 1;
           if (chapter === 1) {
             heroDiscRef.current.position.set(st.x, currentY - 0.772 * stageScale, 0);
-            heroDiscRef.current.scale.setScalar(0.48);
+            heroDiscRef.current.scale.setScalar(0.42);
           }
         }
 
         // Update animData for this stage render pass
         if (animDataRef.current) {
-          animDataRef.current.mood = stageMood;
           animDataRef.current.eyeLookX = eyeLookX;
           animDataRef.current.eyeLookY = eyeLookY;
           animDataRef.current.eyeOpenness = eyeOpen;
@@ -849,14 +864,21 @@ function LumiSceneContent({
         }
 
         // Scissor & Viewport setup (0,0 is bottom-left in WebGL)
-        const sx = Math.round(rect.left * dpr);
-        const sy = Math.round((winH - rect.bottom) * dpr);
-        const sw = Math.round(rect.width * dpr);
-        const sh = Math.round(rect.height * dpr);
+        // Three.js setScissor and setViewport accept CSS pixels and multiply by _pixelRatio internally.
+        const sx = Math.round(rect.left);
+        const sy = Math.round(winH - rect.bottom);
+        const sw = Math.round(rect.width);
+        const sh = Math.round(rect.height);
 
-        if (sw > 0 && sh > 0) {
+        // Clamp tightly within viewport bounds [0, winW] and [0, winH] to guarantee no bleed
+        const clampedX = Math.max(0, sx);
+        const clampedY = Math.max(0, sy);
+        const clampedW = Math.max(0, Math.min(winW - clampedX, sw));
+        const clampedH = Math.max(0, Math.min(winH - clampedY, sh));
+
+        if (clampedW > 0 && clampedH > 0) {
           state.gl.setScissorTest(true);
-          state.gl.setScissor(sx, sy, sw, sh);
+          state.gl.setScissor(clampedX, clampedY, clampedW, clampedH);
           state.gl.setViewport(sx, sy, sw, sh);
 
           if ('aspect' in state.camera) {

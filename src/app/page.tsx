@@ -306,16 +306,16 @@ function SeeChapter({ isLiteMode = false }: { isLiteMode?: boolean }) {
             </ul>
 
             {/* LUMI Companion App Device Mockup (uncompressed, centered, up to 300px wide) */}
-            <div className="relative max-w-[76px] sm:max-w-[200px] mx-auto lg:mx-0">
+            <div className="phone-mockup-wrapper relative w-full max-w-[240px] sm:max-w-[280px] mx-auto lg:mx-0 my-3">
               <Image
                 src="/drive1.png"
                 alt="LUMI Companion App live video stream and touch driving controls"
                 width={853}
                 height={1844}
-                className="w-full h-auto object-contain block select-none pointer-events-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+                className="w-full h-auto object-contain block select-none pointer-events-none drop-shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
                 priority
               />
-              <p className="text-[11px] font-mono text-muted text-center mt-1 tracking-wider uppercase leading-tight">
+              <p className="text-[11px] font-mono text-muted text-center mt-2 tracking-wider uppercase leading-none">
                 LUMI Companion App
               </p>
             </div>

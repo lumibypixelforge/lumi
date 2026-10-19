@@ -280,6 +280,43 @@ export function LumiGLBModel({
     }
   }, [mood]);
 
+  // Handle real-time mood change events for instant reactivity
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onSetMood = (e: Event) => {
+      const customEvent = e as CustomEvent<LumiMood>;
+      const newMood = customEvent.detail;
+      if (newMood && MOOD_PRESETS[newMood]) {
+        prevMoodRef.current = newMood;
+        targetParamsRef.current = { ...MOOD_PRESETS[newMood] };
+        currentParamsRef.current = { ...MOOD_PRESETS[newMood] };
+        morphProgressRef.current = 1.0;
+        if (screenCanvasRef.current && screenTextureRef.current) {
+          const ctx = screenCanvasRef.current.getContext('2d');
+          if (ctx) {
+            renderLumiFace(ctx, screenCanvasRef.current.width, screenCanvasRef.current.height, {
+              mood: newMood,
+              params: MOOD_PRESETS[newMood],
+              lookX: 0,
+              lookY: 0,
+              openness: 1.0,
+              scale: 1.0,
+              twinklePhase: 0,
+              time: performance.now() / 1000,
+            });
+            screenTextureRef.current.needsUpdate = true;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('lumi:set-mood', onSetMood);
+    return () => {
+      window.removeEventListener('lumi:set-mood', onSetMood);
+    };
+  }, []);
+
   // Cache and clone all materials so opacity fading works seamlessly before footer
   const materialsRef = useRef<THREE.Material[]>([]);
 
