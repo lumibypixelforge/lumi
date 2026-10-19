@@ -873,16 +873,24 @@ function LumiSceneContent({
           targetWheelSpin = travelRange / wheelRadius;
         }
       } else {
-        // Chapters 2 to 9: Enter from left (0.92 -> 0.72), dwell centered, exit to right
+        // Chapters 2 to 9: Alternating entrance & exit directions for seamless narrative flow
+        // Even chapters (2, 4, 6, 8): Enter from RIGHT, dwell centered, exit to LEFT
+        // Odd chapters (3, 5, 7, 9): Enter from LEFT, dwell centered, exit to RIGHT
+        const entersFromLeft = chapter % 2 !== 0;
+        const enterX = entersFromLeft ? -travelRange : travelRange;
+        const enterYaw = entersFromLeft ? 0.26 : -0.26;
+        const exitX = entersFromLeft ? travelRange : -travelRange;
+        const exitYaw = entersFromLeft ? 0.26 : -0.26;
+
         if (tVal > 0.92) {
-          targetX = -travelRange;
-          targetYaw = 0.26;
+          targetX = enterX;
+          targetYaw = enterYaw;
           targetWheelSpin = 0;
         } else if (tVal >= 0.72) {
           // Enter: 0.92 -> 0.72 with zero-jerk quintic smootherstep
           const u = smootherstep((0.92 - tVal) / 0.20);
-          targetX = -travelRange * (1 - u);
-          targetYaw = 0.26 * (1 - u);
+          targetX = enterX * (1 - u);
+          targetYaw = enterYaw * (1 - u);
           targetWheelSpin = (travelRange * u) / wheelRadius;
         } else if (tVal > 0.16) {
           // Hold: 0.72 -> 0.16 (centered, faces reader during whole chapter reading dwell)
@@ -897,12 +905,12 @@ function LumiSceneContent({
         } else if (tVal >= -0.05) {
           // Exit: 0.16 -> -0.05 with zero-jerk quintic smootherstep
           const v = smootherstep((0.16 - tVal) / 0.21);
-          targetX = travelRange * v;
-          targetYaw = 0.26 * v;
+          targetX = exitX * v;
+          targetYaw = exitYaw * v;
           targetWheelSpin = (travelRange / wheelRadius) + (travelRange * v) / wheelRadius;
         } else {
-          targetX = travelRange;
-          targetYaw = 0.26;
+          targetX = exitX;
+          targetYaw = exitYaw;
           targetWheelSpin = (2 * travelRange) / wheelRadius;
         }
       }
