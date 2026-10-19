@@ -63,8 +63,9 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       scrollStore.lastScrollTime = now;
     });
 
-    // Native fallback scroll listener
+    // Native fallback scroll listener (only when Lenis is inactive)
     const onNativeScroll = () => {
+      if (scrollStore.lenisInstance) return;
       const curY = window.scrollY;
       const deltaY = curY - scrollStore.y;
       scrollStore.direction = deltaY >= 0 ? 1 : -1;

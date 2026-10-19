@@ -395,18 +395,31 @@ export function LumiGLBModel({
       );
     }
 
-    // 3. Parametric eye morphing progress
+    // 3. Parametric eye morphing progress with smoothstep
     if (morphProgressRef.current < 1.0) {
-      morphProgressRef.current = Math.min(1.0, morphProgressRef.current + safeDelta / 0.35);
+      morphProgressRef.current = Math.min(1.0, morphProgressRef.current + safeDelta / 0.32);
+      const p = morphProgressRef.current;
+      const easeP = p * p * (3 - 2 * p); // smoothstep
       currentParamsRef.current = interpolateEyeParams(
         currentParamsRef.current,
         targetParamsRef.current,
-        morphProgressRef.current
+        easeP
       );
     }
 
-    // 4. Redraw face texture at most 30 times per second
-    if (now - lastDrawTimeRef.current >= 0.033) {
+    // 4. Redraw face texture:
+    // During active animations (blinking, glancing, morphing, hopping), redraw at native display rate (up to 120fps).
+    // During static idle, throttle to 30fps to maintain power efficiency.
+    const isActivelyAnimating =
+      morphProgressRef.current < 1.0 ||
+      Math.abs(currentOpenness - 1.0) > 0.01 ||
+      Math.abs(currentLookX) > 0.01 ||
+      Math.abs(currentLookY) > 0.01 ||
+      Math.abs(currentScale - 1.0) > 0.01;
+
+    const minRedrawInterval = isActivelyAnimating ? 0.008 : 0.033;
+
+    if (now - lastDrawTimeRef.current >= minRedrawInterval) {
       lastDrawTimeRef.current = now;
       if (screenCanvasRef.current && screenTextureRef.current) {
         const ctx = screenCanvasRef.current.getContext('2d');

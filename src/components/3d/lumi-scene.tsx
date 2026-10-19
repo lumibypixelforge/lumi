@@ -64,6 +64,11 @@ function lerpAngle(from: number, to: number, t: number): number {
   return fromNorm + diff * t;
 }
 
+function smootherstep(x: number): number {
+  const c = Math.max(0, Math.min(1, x));
+  return c * c * c * (c * (c * 6 - 15) + 10);
+}
+
 // ─── Keyframes per Chapter (1 to 9) ──────────────────────────────────
 
 // Desktop (768px+ & landscape <500px): alternating 12-column stage choreography
@@ -312,7 +317,7 @@ function LumiSceneContent({
   const modelGroupRef = useRef<THREE.Group>(null!);
   const ambientLightRef = useRef<THREE.AmbientLight>(null!);
   const directionalLightRef = useRef<THREE.DirectionalLight>(null!);
-  const mobileStageStateRef = useRef<Record<number, { x: number; yaw: number; wheelSpin: number }>>({});
+  const mobileStageStateRef = useRef<Record<number, { x: number; yaw: number; wheelSpin: number; vx?: number; roll?: number; pitch?: number }>>({});
 
   const initialKeyframe = isMobile ? MOBILE_KEYFRAMES[1] : isTablet ? TABLET_KEYFRAMES[1] : DESKTOP_KEYFRAMES[1];
   const initialStageX = initialKeyframe.x;
@@ -664,14 +669,43 @@ function LumiSceneContent({
       state.gl.autoClear = false;
       state.gl.clear();
 
-      // Tap Hop check
+      // Tap Hop with squash & stretch (Disney 12 animation principles)
       let hopY = 0;
+      let hopSquashY = 1.0;
+      let hopSquashXZ = 1.0;
       let isHopping = false;
       if (hopStartTimeRef.current > 0) {
-        const hopElapsed = (nowMs - hopStartTimeRef.current) / 450;
-        if (hopElapsed >= 0 && hopElapsed < 1) {
-          hopY = Math.sin(hopElapsed * Math.PI) * 0.18;
+        const hopElapsed = (nowMs - hopStartTimeRef.current) / 500;
+        if (hopElapsed >= 0 && hopElapsed < 1.0) {
           isHopping = true;
+          if (hopElapsed < 0.15) {
+            // Anticipation crouch / squash
+            const u = hopElapsed / 0.15;
+            const c = Math.sin(u * Math.PI);
+            hopSquashY = 1.0 - c * 0.07;
+            hopSquashXZ = 1.0 + c * 0.04;
+            hopY = -0.01 * c;
+          } else if (hopElapsed < 0.70) {
+            // Jump arc & stretch in air
+            const u = (hopElapsed - 0.15) / 0.55;
+            const arc = Math.sin(u * Math.PI);
+            hopY = arc * 0.16;
+            hopSquashY = 1.0 + arc * 0.08;
+            hopSquashXZ = 1.0 - arc * 0.04;
+          } else if (hopElapsed < 0.88) {
+            // Landing impact squash
+            const u = (hopElapsed - 0.70) / 0.18;
+            const land = Math.sin(u * Math.PI);
+            hopSquashY = 1.0 - land * 0.06;
+            hopSquashXZ = 1.0 + land * 0.04;
+            hopY = 0;
+          } else {
+            // Settle bounce
+            const u = (hopElapsed - 0.88) / 0.12;
+            hopSquashY = 1.0 + Math.sin(u * Math.PI) * 0.02;
+            hopSquashXZ = 1.0 - Math.sin(u * Math.PI) * 0.01;
+            hopY = 0;
+          }
         }
       }
 
@@ -691,35 +725,46 @@ function LumiSceneContent({
       let eyeLookX = 0;
       let eyeLookY = 0;
       if (isGlancingRef.current) {
-        glanceProgressRef.current += safeDelta * 1.5;
+        glanceProgressRef.current += safeDelta * 1.4;
         if (glanceProgressRef.current >= 1.0) {
           isGlancingRef.current = false;
         } else {
-          const glanceEase = Math.sin(glanceProgressRef.current * Math.PI);
-          eyeLookX = glanceTargetRef.current.x * glanceEase;
-          eyeLookY = glanceTargetRef.current.y * glanceEase;
+          // Smooth bell curve with cubic ease
+          const p = glanceProgressRef.current;
+          const bell = Math.sin(p * Math.PI);
+          const smoothBell = bell * bell * (3 - 2 * bell);
+          eyeLookX = glanceTargetRef.current.x * smoothBell;
+          eyeLookY = glanceTargetRef.current.y * smoothBell;
         }
       }
 
-      // Blinking
+      // Natural biological blink (swift 35% close, soft 65% quadratic ease-out open)
       blinkTimerRef.current += safeDelta;
       if (blinkTimerRef.current >= nextBlinkAtRef.current) {
         blinkTimerRef.current = 0;
-        nextBlinkAtRef.current = 2.5 + Math.random() * 3.5;
+        nextBlinkAtRef.current = 2.8 + Math.random() * 3.2;
         isBlinkingRef.current = true;
         blinkProgressRef.current = 0;
       }
       let eyeOpen = 1.0;
       if (isBlinkingRef.current) {
-        blinkProgressRef.current += safeDelta * 7.5;
+        blinkProgressRef.current += safeDelta * 6.5;
         if (blinkProgressRef.current >= 1.0) {
           isBlinkingRef.current = false;
+          eyeOpen = 1.0;
         } else {
-          eyeOpen = Math.abs(Math.sin(blinkProgressRef.current * Math.PI - Math.PI / 2));
+          const bp = blinkProgressRef.current;
+          if (bp < 0.35) {
+            const u = bp / 0.35;
+            eyeOpen = Math.max(0, 1.0 - u * u);
+          } else {
+            const u = (bp - 0.35) / 0.65;
+            eyeOpen = Math.min(1.0, u * (2 - u));
+          }
         }
       }
       if (isHopping) {
-        eyeOpen = 1.35;
+        eyeOpen = 1.25;
       }
 
       const winH = window.innerHeight;
@@ -782,12 +827,11 @@ function LumiSceneContent({
         targetYaw = 0.26;
         targetWheelSpin = 0;
       } else if (tVal >= 0.72) {
-        // Enter: 0.92 -> 0.72 (LUMI drives in from left edge to center with ease-out, 15 deg yaw lean)
-        const u = (0.92 - tVal) / 0.20;
-        const easeOut = 1 - Math.pow(1 - u, 3);
-        targetX = -travelRange * (1 - easeOut);
-        targetYaw = 0.26 * (1 - easeOut);
-        targetWheelSpin = (travelRange * easeOut) / wheelRadius;
+        // Enter: 0.92 -> 0.72 with zero-jerk quintic smootherstep
+        const u = smootherstep((0.92 - tVal) / 0.20);
+        targetX = -travelRange * (1 - u);
+        targetYaw = 0.26 * (1 - u);
+        targetWheelSpin = (travelRange * u) / wheelRadius;
       } else if (tVal > 0.16) {
         // Hold: 0.72 -> 0.16 (centered, faces reader during whole chapter reading dwell)
         inHold = true;
@@ -799,26 +843,32 @@ function LumiSceneContent({
         }
         targetWheelSpin = (travelRange / wheelRadius) + extraSpin;
       } else if (tVal >= -0.05) {
-        // Exit: 0.16 -> -0.05 (turns 15 deg yaw, drives out of right edge with ease-in as stage scrolls off top)
-        const v = (0.16 - tVal) / 0.21;
-        const easeIn = Math.pow(v, 3);
-        targetX = travelRange * easeIn;
-        targetYaw = 0.26 * easeIn;
-        targetWheelSpin = (travelRange / wheelRadius) + (travelRange * easeIn) / wheelRadius;
+        // Exit: 0.16 -> -0.05 with zero-jerk quintic smootherstep
+        const v = smootherstep((0.16 - tVal) / 0.21);
+        targetX = travelRange * v;
+        targetYaw = 0.26 * v;
+        targetWheelSpin = (travelRange / wheelRadius) + (travelRange * v) / wheelRadius;
       } else {
         targetX = travelRange;
         targetYaw = 0.26;
         targetWheelSpin = (2 * travelRange) / wheelRadius;
       }
 
-      // Frame-rate independent smoothing step
+      // Critically damped, organic smoothing (absorbs finger micro-vibrations)
       if (!mobileStageStateRef.current[chapter]) {
-        mobileStageStateRef.current[chapter] = { x: targetX, yaw: targetYaw, wheelSpin: targetWheelSpin };
+        mobileStageStateRef.current[chapter] = { x: targetX, yaw: targetYaw, wheelSpin: targetWheelSpin, vx: 0, roll: 0, pitch: 0 };
       }
       const st = mobileStageStateRef.current[chapter];
-      st.x = THREE.MathUtils.lerp(st.x, targetX, 1 - Math.exp(-18 * safeDelta));
-      st.yaw = lerpAngle(st.yaw, targetYaw, 1 - Math.exp(-18 * safeDelta));
-      st.wheelSpin = THREE.MathUtils.lerp(st.wheelSpin, targetWheelSpin, 1 - Math.exp(-22 * safeDelta));
+      const prevX = st.x;
+      st.x = THREE.MathUtils.lerp(st.x, targetX, 1 - Math.exp(-9.5 * safeDelta));
+      st.yaw = lerpAngle(st.yaw, targetYaw, 1 - Math.exp(-10.5 * safeDelta));
+      st.wheelSpin = THREE.MathUtils.lerp(st.wheelSpin, targetWheelSpin, 1 - Math.exp(-12 * safeDelta));
+
+      // Calculate smooth velocity for organic banking roll and acceleration pitch
+      const rawVx = (st.x - prevX) / Math.max(safeDelta, 0.001);
+      st.vx = THREE.MathUtils.lerp(st.vx || 0, rawVx, 1 - Math.exp(-8 * safeDelta));
+      st.roll = THREE.MathUtils.lerp(st.roll || 0, THREE.MathUtils.clamp(-st.vx * 0.022, -0.045, 0.045), 1 - Math.exp(-10 * safeDelta));
+      st.pitch = THREE.MathUtils.lerp(st.pitch || 0, THREE.MathUtils.clamp(st.vx * 0.012, -0.025, 0.025), 1 - Math.exp(-10 * safeDelta));
 
       // Idle float & hop
       const idleY = Math.sin(t * 1.8) * 0.02;
@@ -843,14 +893,14 @@ function LumiSceneContent({
       const stageScale = 0.80;
       const stageCenterYOffset = 0.16;
       modelGroupRef.current.position.set(st.x, currentY + stageCenterYOffset, 0);
-      modelGroupRef.current.rotation.set(0, st.yaw, 0);
-      modelGroupRef.current.scale.setScalar(stageScale);
+      modelGroupRef.current.rotation.set(st.pitch, st.yaw, st.roll);
+      modelGroupRef.current.scale.set(stageScale * hopSquashXZ, stageScale * hopSquashY, stageScale * hopSquashXZ);
       modelGroupRef.current.visible = true;
 
       if (shadowGroupRef.current) {
         shadowGroupRef.current.position.set(st.x, currentY + stageCenterYOffset - 0.772 * stageScale, 0);
         shadowGroupRef.current.rotation.set(0, st.yaw, 0);
-        shadowGroupRef.current.scale.setScalar(stageScale);
+        shadowGroupRef.current.scale.set(stageScale * hopSquashXZ, stageScale, stageScale * hopSquashXZ);
       }
 
       if (heroDiscRef.current) {
