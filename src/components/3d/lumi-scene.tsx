@@ -1520,8 +1520,9 @@ function LumiSceneContent({
     }
 
     // Desktop render pass
+    state.gl.autoClear = true;
     state.gl.setScissorTest(false);
-    state.gl.setViewport(0, 0, state.gl.domElement.width, state.gl.domElement.height);
+    state.gl.setViewport(0, 0, state.size.width, state.size.height);
     if ('aspect' in state.camera) {
       (state.camera as THREE.PerspectiveCamera).aspect = state.size.width / state.size.height;
       state.camera.updateProjectionMatrix();
@@ -1599,8 +1600,10 @@ export function LumiScene({
   }, []);
 
   const isLowEnd = useIsLowEndDevice();
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
 
-  if (!isWebGLAvailable || isLowEnd) {
+  // On desktop, never disable WebGL. On mobile, fall back only if WebGL is unsupported or extreme low-end
+  if (!isWebGLAvailable || (isMobile && isLowEnd)) {
     return null;
   }
 
@@ -1645,12 +1648,15 @@ export function useIsLowEndDevice(): boolean {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // Desktop devices (>= 768px) should never be treated as low-end
+    if (window.innerWidth >= 768) {
+      setIsLowEnd(false);
+      return;
+    }
     const nav = navigator as any;
     const isLite =
-      (nav.deviceMemory && nav.deviceMemory <= 4) ||
-      (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) ||
-      (nav.connection && nav.connection.saveData) ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      (nav.deviceMemory && nav.deviceMemory <= 2) ||
+      (nav.connection && nav.connection.saveData);
     if (isLite) {
       setIsLowEnd(true);
     }
@@ -1658,4 +1664,5 @@ export function useIsLowEndDevice(): boolean {
 
   return isLowEnd;
 }
+
 

@@ -448,14 +448,16 @@ body {
 
 /* Desktop & Landscape phones under 500px: Fixed full viewport */
 @media (min-width: 768px), (max-height: 499px) and (orientation: landscape) {
-  .chapter {
+  .chapter,
+  .chapter.section,
+  [id].chapter {
     position: relative;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
+    min-height: 100vh !important;
+    display: flex !important;
+    align-items: center !important;
   }
 
-  /* Robot stages are hidden on desktop since the 12-col layout renders the robot on the fixed canvas */
+  /* Robot stages are strictly hidden on desktop since the 12-col layout renders the robot on the fixed canvas */
   .robot-stage {
     display: none !important;
   }

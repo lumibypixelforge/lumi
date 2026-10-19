@@ -52,6 +52,8 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     });
 
     scrollStore.lenisInstance = lenis;
+    scrollStore.y = window.scrollY;
+    scrollStore.targetY = window.scrollY;
 
     lenis.on('scroll', (e: { scroll: number; velocity: number; direction: number }) => {
       const now = performance.now();
