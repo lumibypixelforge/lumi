@@ -43,18 +43,19 @@ export default function VerifyEmailScreen() {
 
   const targetEmail = (params.email || user?.email || '').trim().toLowerCase();
 
+  // Luxury dark mode color tokens
   const theme = {
-    bg: isDark ? '#12111A' : '#F7F6FB',
-    card: isDark ? '#1C1B27' : '#FFFFFF',
-    inputBg: isDark ? '#1C1B27' : '#F4F2FA',
-    border: isDark ? '#2E2B3D' : '#E7E4F0',
-    ink: isDark ? '#F1EFF8' : '#1E1B2E',
-    muted: isDark ? '#A8A4BD' : '#5B5670',
-    placeholder: isDark ? '#8E8A9F' : '#6B6785',
-    accent: isDark ? '#8B6DF0' : '#6D4AE0',
-    accentActive: '#5B3CC4',
-    error: '#B42318',
-    success: '#12805C',
+    bg: isDark ? '#090810' : '#F7F6FB',
+    card: isDark ? '#141224' : '#FFFFFF',
+    inputBg: isDark ? '#121020' : '#F4F2FA',
+    border: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E7E4F0',
+    ink: isDark ? '#F8FAFC' : '#1E1B2E',
+    muted: isDark ? '#94A3B8' : '#5B5670',
+    placeholder: isDark ? '#64748B' : '#6B6785',
+    accent: '#7C3AED',
+    accentActive: '#6D28D9',
+    error: '#EF4444',
+    success: '#10B981',
   };
 
   const [code, setCode] = useState('');
@@ -150,52 +151,65 @@ export default function VerifyEmailScreen() {
       <View style={[styles.screenContainer, { backgroundColor: theme.bg }]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
 
-        {/* Top Bar: Back Button on left, LUMI title */}
-        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 4 }]}>
+        {/* Top Navigation Bar: Back button on left, LUMI wordmark + dot centered */}
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 12) }]}>
           <Pressable
             onPress={() => router.back()}
-            style={styles.backBtn}
+            style={[
+              styles.backBtn,
+              {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+              },
+            ]}
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <ArrowLeft size={20} color={theme.ink} />
+            <ArrowLeft size={18} color={theme.ink} />
           </Pressable>
 
-          <Text style={[styles.logoText, { color: theme.ink }]}>LUMI</Text>
+          <View style={styles.logoRow}>
+            <Text style={[styles.logoText, { color: theme.ink }]}>LUMI</Text>
+            <View style={styles.logoDot} />
+          </View>
 
-          <View style={{ width: 44 }} />
+          <View style={{ width: 38 }} />
         </View>
 
         <KeyboardAvoidingView
           style={styles.keyboardView}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
         >
           <ScrollView
             style={styles.scrollView}
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingBottom: Math.max(insets.bottom, 16) + 32 },
+              { paddingBottom: isKeyboardOpen ? 140 : Math.max(insets.bottom + 20, 28) },
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            bounces={false}
+            overScrollMode="never"
           >
-            {/* Centered LUMI Face Screen (112px -> 56px when keyboard open) */}
-            <View style={styles.faceScreenWrapper}>
-              <LumiFaceScreen mood={mood} isKeyboardOpen={isKeyboardOpen} />
+            {/* Centered Hero OLED Face Screen */}
+            <View style={[styles.faceScreenWrapper, { marginBottom: isKeyboardOpen ? 6 : 14 }]}>
+              <LumiFaceScreen mood={mood} isKeyboardOpen={isKeyboardOpen} maxHeight={68} width={124} />
             </View>
 
             <Text style={[styles.title, { color: theme.ink }]}>
               Verify your email
             </Text>
             <Text style={[styles.subtitle, { color: theme.muted }]}>
-              Enter the 6-digit code sent to{' '}
-              <Text style={{ fontWeight: '600', color: theme.ink }}>{targetEmail || 'your email'}</Text>
+              Enter the 6-digit code sent to{'\n'}
+              <Text style={{ fontWeight: '700', color: theme.ink }}>{targetEmail || 'your email'}</Text>
             </Text>
 
             {/* Notice banner if directed from unconfirmed login */}
             {params.notice === 'unconfirmed' && (
-              <View style={[styles.noticeBanner, { borderColor: theme.accent + '40', backgroundColor: theme.card }]}>
+              <View style={[styles.noticeBanner, { borderColor: theme.accent + '40', backgroundColor: isDark ? '#141224' : '#F5F3FF' }]}>
+                <AlertCircle size={16} color={theme.accent} style={{ marginRight: 8 }} />
                 <Text style={[styles.noticeText, { color: theme.accent }]}>
                   Your account requires email verification. We sent a 6-digit code to your inbox.
                 </Text>
@@ -204,10 +218,20 @@ export default function VerifyEmailScreen() {
 
             {/* Success Banner when Resent */}
             {resendSuccess && (
-              <View style={[styles.successBanner, { borderColor: theme.success + '40' }]}>
-                <CheckCircle2 size={16} color={theme.success} style={{ marginRight: 6 }} />
+              <View style={[styles.successBanner, { borderColor: theme.success + '40', backgroundColor: isDark ? '#062016' : '#ECFDF5' }]}>
+                <CheckCircle2 size={16} color={theme.success} style={{ marginRight: 8 }} />
                 <Text style={[styles.successText, { color: theme.success }]}>
                   New 6-digit code sent to your inbox!
+                </Text>
+              </View>
+            )}
+
+            {/* Error Banner if any */}
+            {localError && (
+              <View style={[styles.generalErrorBanner, { borderColor: theme.error + '40' }]}>
+                <AlertCircle size={16} color={theme.error} style={{ marginRight: 8 }} />
+                <Text style={[styles.generalErrorText, { color: theme.error }]}>
+                  {localError}
                 </Text>
               </View>
             )}
@@ -246,12 +270,22 @@ export default function VerifyEmailScreen() {
               )}
             </Pressable>
 
-            {/* Resend Action */}
+            {/* Resend Action Pill */}
             <View style={styles.resendWrapper}>
               <Pressable
                 onPress={handleResend}
                 disabled={resendCountdown > 0 || isSubmitting}
-                style={styles.resendBtn}
+                style={[
+                  styles.resendBtn,
+                  {
+                    backgroundColor: isDark
+                      ? (resendCountdown > 0 ? 'rgba(255, 255, 255, 0.03)' : 'rgba(124, 58, 237, 0.12)')
+                      : (resendCountdown > 0 ? '#F1F5F9' : '#EDE9FE'),
+                    borderColor: isDark
+                      ? (resendCountdown > 0 ? 'rgba(255, 255, 255, 0.08)' : 'rgba(124, 58, 237, 0.28)')
+                      : (resendCountdown > 0 ? '#E2E8F0' : '#DDD6FE'),
+                  },
+                ]}
                 accessibilityRole="button"
               >
                 <RefreshCw
@@ -262,7 +296,7 @@ export default function VerifyEmailScreen() {
                 <Text
                   style={[
                     styles.resendText,
-                    { color: resendCountdown > 0 ? theme.muted : theme.accent },
+                    { color: resendCountdown > 0 ? theme.muted : (isDark ? '#C4B5FD' : theme.accent) },
                   ]}
                 >
                   {resendCountdown > 0
@@ -300,19 +334,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 8,
+    paddingHorizontal: 22,
+    paddingBottom: 6,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
     justifyContent: 'center',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   logoText: {
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 1.5,
+  },
+  logoDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#00F0FF',
+    marginTop: 2,
   },
   keyboardView: {
     flex: 1,
@@ -321,26 +369,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingHorizontal: 22,
+    paddingTop: 8,
   },
   faceScreenWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
   },
   title: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '600',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 6,
+    letterSpacing: -0.4,
+    marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   noticeBanner: {
     flexDirection: 'row',
@@ -349,12 +397,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   noticeText: {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '500',
+    flex: 1,
   },
   successBanner: {
     flexDirection: 'row',
@@ -364,12 +413,27 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   successText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#12805C',
+  },
+  generalErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  generalErrorText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    flex: 1,
   },
   otpWrapper: {
     marginVertical: 12,
@@ -378,19 +442,31 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     height: 52,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7C3AED',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.38,
+        shadowRadius: 14,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   primaryBtnPressed: {
     opacity: 0.9,
-    transform: [{ scale: 0.99 }],
+    transform: [{ scale: 0.985 }],
   },
   primaryBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   loadingRow: {
     flexDirection: 'row',
@@ -404,21 +480,24 @@ const styles = StyleSheet.create({
   resendBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   resendText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   changeEmailRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 22,
   },
   footerMuted: {
     fontSize: 13,
+    fontWeight: '500',
   },
   changeEmailLink: {
     fontSize: 13,

@@ -39,8 +39,8 @@ export interface LumiFaceScreenProps {
 export function LumiFaceScreen({
   mood = 'idle',
   isKeyboardOpen = false,
-  maxHeight = 46,
-  width = 92,
+  maxHeight = 68,
+  width = 124,
 }: LumiFaceScreenProps) {
   const isReducedMotion = useReducedMotion();
 
@@ -239,101 +239,102 @@ export function LumiFaceScreen({
 
     // 5. Default / Happy / LookDown: Iconic Upward Arches (^ ^)
     return (
-      <Svg width={70} height={26} viewBox="0 0 100 40">
-        {/* Left eye glowing arch */}
-        <Path
-          d="M 14 26 C 14 9, 42 9, 42 26"
-          fill="none"
-          stroke="rgba(95, 243, 255, 0.35)"
-          strokeWidth="10"
-          strokeLinecap="round"
-        />
-        <Path
-          d="M 14 26 C 14 9, 42 9, 42 26"
-          fill="none"
-          stroke="#5FF3FF"
-          strokeWidth="6"
-          strokeLinecap="round"
-        />
-        <Path
-          d="M 15 25 C 16 11, 40 11, 41 25"
-          fill="none"
-          stroke="#E6FEFF"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
+        <Svg width={88} height={34} viewBox="0 0 100 40">
+          {/* Left eye glowing arch */}
+          <Path
+            d="M 14 26 C 14 9, 42 9, 42 26"
+            fill="none"
+            stroke="rgba(95, 243, 255, 0.35)"
+            strokeWidth="10"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M 14 26 C 14 9, 42 9, 42 26"
+            fill="none"
+            stroke="#5FF3FF"
+            strokeWidth="6"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M 15 25 C 16 11, 40 11, 41 25"
+            fill="none"
+            stroke="#E6FEFF"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
 
-        {/* Right eye glowing arch */}
-        <Path
-          d="M 58 26 C 58 9, 86 9, 86 26"
-          fill="none"
-          stroke="rgba(95, 243, 255, 0.35)"
-          strokeWidth="10"
-          strokeLinecap="round"
-        />
-        <Path
-          d="M 58 26 C 58 9, 86 9, 86 26"
-          fill="none"
-          stroke="#5FF3FF"
-          strokeWidth="6"
-          strokeLinecap="round"
-        />
-        <Path
-          d="M 59 25 C 60 11, 84 11, 85 25"
-          fill="none"
-          stroke="#E6FEFF"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      </Svg>
-    );
-  };
+          {/* Right eye glowing arch */}
+          <Path
+            d="M 58 26 C 58 9, 86 9, 86 26"
+            fill="none"
+            stroke="rgba(95, 243, 255, 0.35)"
+            strokeWidth="10"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M 58 26 C 58 9, 86 9, 86 26"
+            fill="none"
+            stroke="#5FF3FF"
+            strokeWidth="6"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M 59 25 C 60 11, 84 11, 85 25"
+            fill="none"
+            stroke="#E6FEFF"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </Svg>
+      );
+    };
 
-  return (
-    <Animated.View style={[styles.screenFrame, { width }, animatedContainerStyle]}>
-      {/* Subtle screen bezel highlight */}
-      <View style={styles.bezelHighlight} />
+    return (
+      <Animated.View style={[styles.screenFrame, { width }, animatedContainerStyle]}>
+        {/* Subtle screen bezel highlight */}
+        <View style={styles.bezelHighlight} />
 
-      {/* Eyes Container */}
-      <Animated.View style={[styles.eyesWrapper, animatedEyesStyle]}>
-        {renderEyes()}
+        {/* Eyes Container */}
+        <Animated.View style={[styles.eyesWrapper, animatedEyesStyle]}>
+          {renderEyes()}
+        </Animated.View>
       </Animated.View>
-    </Animated.View>
-  );
-}
+    );
+  }
 
-const styles = StyleSheet.create({
-  screenFrame: {
-    backgroundColor: '#0D0E1A',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  bezelHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  eyesWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+  const styles = StyleSheet.create({
+    screenFrame: {
+      backgroundColor: '#070812',
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'center',
+      overflow: 'hidden',
+      borderWidth: 1.5,
+      borderColor: 'rgba(95, 243, 255, 0.25)',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#00F0FF',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 16,
+        },
+        android: {
+          elevation: 6,
+        },
+      }),
+    },
+    bezelHighlight: {
+      position: 'absolute',
+      top: 0,
+      left: 10,
+      right: 10,
+      height: 1.5,
+      backgroundColor: 'rgba(255, 255, 255, 0.25)',
+      borderRadius: 1,
+    },
+    eyesWrapper: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
