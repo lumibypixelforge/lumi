@@ -69,7 +69,7 @@ export default function ActivityScreen() {
   const user = useAuthStore((s) => s.user);
 
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-
+       
   const {
     data: sessions = [],
     isLoading,
