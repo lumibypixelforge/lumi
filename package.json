@@ -1,0 +1,12 @@
+{
+  "name": "lumi-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LUMI - The telepresence robot ecosystem: companion app and web platform",
+  "scripts": {
+    "dev:web": "pnpm --filter lumi_web dev",
+    "dev:app": "npm --prefix lumi_app start",
+    "build:web": "pnpm --filter lumi_web build",
+    "build": "pnpm --filter lumi_web build"
+  }
+}
