@@ -103,7 +103,7 @@ export const supabaseAuthService: AuthService = {
     }
 
     // Try standard signup OTP verification
-    const { error } = await supabase.auth.verifyOtp({
+    let { data, error } = await supabase.auth.verifyOtp({
       email: targetEmail,
       token: code.trim(),
       type: 'signup',
@@ -120,6 +120,11 @@ export const supabaseAuthService: AuthService = {
       if (fallback.error) {
         throw new Error(error.message || fallback.error.message);
       }
+      data = fallback.data;
+    }
+
+    if (data?.user) {
+      pendingEmail = data.user.email || targetEmail;
     }
   },
 

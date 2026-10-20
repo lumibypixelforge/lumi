@@ -36,10 +36,19 @@ import { supabase } from '../src/lib/supabase';
 import { CustomDialogHost } from '../src/components/CustomDialogHost';
 
 if (Platform.OS !== 'web') {
-  // Initialize WebRTC globals for LiveKit on native platforms
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { registerGlobals } = require('@livekit/react-native');
-  registerGlobals();
+  // Initialize WebRTC globals for LiveKit if native module is present
+  try {
+    const { NativeModules } = require('react-native');
+    if (NativeModules && NativeModules.WebRTCModule) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { registerGlobals } = require('@livekit/react-native');
+      registerGlobals();
+    } else {
+      console.log('[WebRTC] WebRTC native module not available in standard Expo Go. Using safe development mode.');
+    }
+  } catch (err) {
+    console.warn('[WebRTC] WebRTC init skipped:', err);
+  }
 }
 
 export { ErrorBoundary } from 'expo-router';

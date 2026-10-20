@@ -1,471 +1,701 @@
 /**
- * S04 Log In Screen
- * Bespoke hardware aesthetic featuring LUMI's OLED Eye Screen Hero,
- * warm copy, distinct amber-arrow action button, and deep layered white sheet.
+ * S03 Log In Screen - Redesigned per Design Spec Oct 19, 2026
+ * - Light, minimal off-white #F7F6FB background (no dark header)
+ * - Automatic system light/dark theme support (no manual theme toggle button)
+ * - LUMI wordmark on left, 'Sign up' text button on right
+ * - Centered 112px dark face screen shrinking to 56px when keyboard opens
+ * - Animated responsive LUMI eyes matching website (never clipped)
+ * - 'Continue with Google' first, then 'or' divider, then form fields
+ * - 20px spacing between fields, 52px high, 12px radius, #F4F2FA fill
+ * - Password show/hide toggle (sleep eyes -> open wide)
+ * - Solid brand purple #6D4AE0 primary button (never disabled)
+ * - Inline validation errors with scroll-to-field
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   ScrollView,
   StyleSheet,
   Pressable,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  StatusBar as RNStatusBar,
+  Keyboard,
+  TouchableWithoutFeedback,
+  useColorScheme,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Sun, Moon, Mail, Lock, ArrowRight } from 'lucide-react-native';
-import { TextField } from '../../src/components/TextField';
-import { OledEyePanel } from '../../src/components/OledEyePanel';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react-native';
 import { GoogleLogo } from '../../src/components/GoogleLogo';
-import { useTheme } from '../../src/theme';
+import { LumiFaceScreen, type FaceMood } from '../../src/components/LumiFaceScreen';
 import { useAuthStore } from '../../src/features/auth/useAuthStore';
+import { haptics } from '../../src/utils/haptics';
 
 export default function LoginScreen() {
-  const { theme, isDark, toggleTheme } = useTheme();
-  const insets = useSafeAreaInsets();
-  const colors = theme.colors;
   const router = useRouter();
-  const { logIn, signInWithGoogle, isLoading, error, clearError } = useAuthStore();
+  const insets = useSafeAreaInsets();
+  const systemColorScheme = useColorScheme();
+  const isDark = systemColorScheme === 'dark';
 
+  const { logIn, signInWithGoogle, resendVerification } = useAuthStore();
+
+  // Color tokens from specification
+  const theme = {
+    bg: isDark ? '#12111A' : '#F7F6FB',
+    card: isDark ? '#1C1B27' : '#FFFFFF',
+    inputBg: isDark ? '#1C1B27' : '#F4F2FA',
+    border: isDark ? '#2E2B3D' : '#E7E4F0',
+    ink: isDark ? '#F1EFF8' : '#1E1B2E',
+    muted: isDark ? '#A8A4BD' : '#5B5670',
+    placeholder: isDark ? '#8E8A9F' : '#6B6785',
+    accent: isDark ? '#8B6DF0' : '#6D4AE0',
+    accentActive: '#5B3CC4',
+    error: '#B42318',
+    success: '#12805C',
+  };
+
+  // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Field focus & keyboard states
+  const focusedFieldRef = useRef<any>(null);
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [mood, setMood] = useState<FaceMood>('idle');
+
+  // Loading & error states
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [isFieldFocused, setIsFieldFocused] = useState(false);
-  const [devTapCount, setDevTapCount] = useState(0);
+  const [errors, setErrors] = useState<{
+    email?: string;
+    password?: string;
+    general?: string;
+  }>({});
 
-  // Hidden developer tap gesture: 4 taps on the "LUMI" logo auto-fills demo account
-  const handleSecretDevTap = () => {
-    const nextCount = devTapCount + 1;
-    if (nextCount >= 4) {
-      setEmail('demo@lumi.app');
-      setPassword('password123');
-      clearError();
-      setDevTapCount(0);
-    } else {
-      setDevTapCount(nextCount);
-    }
-  };
+  // Input refs
+  const scrollViewRef = useRef<ScrollView>(null);
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
 
-  const handleLogin = async () => {
-    clearError();
-    if (!email.includes('@') || !password) return;
-    try {
-      await logIn(email.trim().toLowerCase(), password);
-      router.replace('/(tabs)/robots' as any);
-    } catch {
-      // Error is set in store
-    }
-  };
+  useEffect(() => {
+    focusedFieldRef.current = focusedField;
+  }, [focusedField]);
 
-  const handleGoogleSignIn = async () => {
-    clearError();
-    setIsGoogleLoading(true);
-    try {
-      await signInWithGoogle();
-      router.replace('/(tabs)/robots' as any);
-    } catch {
-      // Error is set in store
-    } finally {
-      setIsGoogleLoading(false);
-    }
-  };
-
-  useFocusEffect(
-    React.useCallback(() => {
-      RNStatusBar.setBarStyle('light-content', true);
-      if (Platform.OS === 'android') {
-        RNStatusBar.setBackgroundColor('transparent');
-        RNStatusBar.setTranslucent(true);
+  // Keyboard listeners for smooth collapse and auto-scroll
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setIsKeyboardOpen(true);
+        if (focusedFieldRef.current === 'password') {
+          setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }, 80);
+        }
       }
-    }, [])
-  );
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setIsKeyboardOpen(false);
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Update face mood based on field focus and show-password toggle
+  useEffect(() => {
+    if (mood === 'upset' || mood === 'love') return;
+
+    if (focusedField === 'email') {
+      setMood('lookDown');
+    } else if (focusedField === 'password') {
+      setMood(showPassword ? 'openWide' : 'sleep');
+    } else {
+      setMood('idle');
+    }
+  }, [focusedField, showPassword, mood]);
+
+  const triggerUpsetFace = () => {
+    setMood('upset');
+    setTimeout(() => {
+      setMood('idle');
+    }, 1500);
+  };
+
+  // Validation function
+  const validateForm = () => {
+    const newErrors: typeof errors = {};
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      newErrors.email = 'Enter a valid email address';
+    }
+
+    if (!password) {
+      newErrors.password = 'Enter your password';
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      haptics.heavy();
+      triggerUpsetFace();
+
+      if (newErrors.email) {
+        emailInputRef.current?.focus();
+        scrollViewRef.current?.scrollTo({ y: 140, animated: true });
+      } else if (newErrors.password) {
+        passwordInputRef.current?.focus();
+        scrollViewRef.current?.scrollTo({ y: 220, animated: true });
+      }
+      return false;
+    }
+
+    return true;
+  };
+
+  // Submit Handler
+  const handleLogin = async () => {
+    if (isSubmitting || isGoogleLoading) return;
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    setErrors({});
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    try {
+      haptics.light();
+      await logIn(cleanEmail, password);
+
+      // Success reaction: happy -> love eyes
+      haptics.success();
+      setMood('love');
+
+      setTimeout(() => {
+        router.replace('/(tabs)/robots' as any);
+      }, 800);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      triggerUpsetFace();
+      haptics.heavy();
+
+      const msg = (err?.message || '').toLowerCase();
+      if (msg.includes('email not confirmed') || msg.includes('not verified')) {
+        await resendVerification(cleanEmail).catch(() => {});
+        router.push({
+          pathname: '/(auth)/verify' as any,
+          params: { email: cleanEmail, notice: 'unconfirmed' },
+        });
+        return;
+      }
+
+      if (msg.includes('invalid') || msg.includes('credentials')) {
+        setErrors({
+          general: 'Invalid email or password. Please verify your credentials.',
+        });
+      } else if (msg.includes('network') || msg.includes('connect')) {
+        setErrors({
+          general: 'Could not connect. Check your internet and try again.',
+        });
+      } else {
+        setErrors({
+          general: err.message || 'Log in failed. Please try again.',
+        });
+      }
+    }
+  };
+
+  // Google Sign-In Handler
+  const handleGoogleSignIn = async () => {
+    if (isSubmitting || isGoogleLoading) return;
+    setIsGoogleLoading(true);
+    setErrors({});
+
+    try {
+      haptics.light();
+      await signInWithGoogle();
+      haptics.success();
+      setMood('love');
+      setTimeout(() => {
+        router.replace('/(tabs)/robots' as any);
+      }, 800);
+    } catch (err: any) {
+      setIsGoogleLoading(false);
+      const msg = (err?.message || '').toLowerCase();
+      if (!msg.includes('cancel') && !msg.includes('dismissed')) {
+        triggerUpsetFace();
+        haptics.heavy();
+        setErrors({
+          general: 'Google sign-in did not work. Try again or use email.',
+        });
+      }
+    }
+  };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardContainer}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <StatusBar style="light" />
-      <ScrollView
-        style={styles.screenScroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-      >
-        {/* Dark Hero Section */}
-        <View
-          style={[
-            styles.heroSection,
-            { paddingTop: Math.max(insets.top, 16) + 8 },
-          ]}
-        >
-          {/* Top Bar: LUMI Title + Theme Switcher */}
-          <View style={styles.topBar}>
-            <Pressable
-              onPress={handleSecretDevTap}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="LUMI App Logo"
-            >
-              <Text style={styles.logoText}>LUMI</Text>
-            </Pressable>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={[styles.screenContainer, { backgroundColor: theme.bg }]}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
 
-            <Pressable
-              onPress={toggleTheme}
-              style={styles.themeCircleBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Toggle theme"
-            >
-              {isDark ? (
-                <Sun size={20} color="#FFB84D" />
-              ) : (
-                <Moon size={20} color="#CBD5E1" />
-              )}
-            </Pressable>
-          </View>
+        {/* Top Bar: LUMI Wordmark on left, 'Sign up' text button on right */}
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 4 }]}>
+          <Text style={[styles.logoText, { color: theme.ink }]}>LUMI</Text>
 
-          {/* OLED Eyes Screen Hero */}
-          <View style={styles.oledContainer}>
-            <OledEyePanel
-              mode="open"
-              isFieldFocused={isFieldFocused}
-              width={220}
-              height={108}
-            />
-          </View>
+          <Pressable
+            onPress={() => router.replace('/(auth)/signup' as any)}
+            style={styles.topBarBtn}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Sign up"
+          >
+            <Text style={[styles.topBarBtnText, { color: theme.accent }]}>Sign up</Text>
+          </Pressable>
         </View>
 
-        {/* Rounded Bottom Sheet */}
-        <View
-          style={[
-            styles.bottomSheet,
-            {
-              backgroundColor: isDark ? colors.surface : '#FFFFFF',
-              paddingBottom: Math.max(insets.bottom, 24) + 56,
-            },
-          ]}
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
         >
-          <Animated.View entering={FadeInDown.duration(350)}>
-            {/* Warmer Copy Header */}
-            <Text
-              style={[
-                styles.sheetTitle,
-                { color: isDark ? colors.textPrimary : '#0F172A' },
-              ]}
-            >
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.scrollView}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: Math.max(insets.bottom, 16) + 32 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          
+            scrollEnabled={isKeyboardOpen}
+            bounces={false}
+            overScrollMode="never">
+            {/* Centered LUMI Face Screen (112px -> 56px when keyboard open) */}
+            <View style={[styles.faceScreenWrapper, { marginBottom: isKeyboardOpen ? 0 : 6 }]}>
+              <LumiFaceScreen mood={mood} isKeyboardOpen={isKeyboardOpen} maxHeight={46} width={92} />
+            </View>
+
+            {/* Header Titles */}
+            <Text style={[styles.title, { color: theme.ink }]}>
               Welcome back
             </Text>
-            <Text style={styles.sheetSubtitle}>
-              Log in to drive your LUMI.
+            <Text style={[styles.subtitle, { color: theme.muted }]}>
+              Sign in to connect to your LUMI.
             </Text>
 
-            {error && (
-              <View style={[styles.errorBanner, { backgroundColor: colors.danger + '18' }]}>
-                <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+            {/* General Banner Error if any */}
+            {errors.general && (
+              <View style={[styles.generalErrorBanner, { borderColor: theme.error + '40' }]}>
+                <AlertCircle size={16} color={theme.error} style={{ marginRight: 8 }} />
+                <Text style={[styles.generalErrorText, { color: theme.error }]}>
+                  {errors.general}
+                </Text>
               </View>
             )}
 
-            {/* Email Field with Left Icon */}
-            <TextField
-              label="Email"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              leftIcon={<Mail size={20} color="#94A3B8" />}
-              onFocus={() => setIsFieldFocused(true)}
-              onBlur={() => setIsFieldFocused(false)}
-            />
-
-            {/* Password Field with Left Icon & Eye Toggle */}
-            <TextField
-              label="Password"
-              placeholder="Your password"
-              value={password}
-              onChangeText={setPassword}
-              isPassword
-              leftIcon={<Lock size={20} color="#94A3B8" />}
-              onFocus={() => setIsFieldFocused(true)}
-              onBlur={() => setIsFieldFocused(false)}
-            />
-
-            {/* Forgot Password Link */}
-            <Pressable
-              onPress={() => router.push('/(auth)/forgot' as any)}
-              style={styles.forgotRow}
-              accessibilityRole="link"
-              accessibilityLabel="Forgot password"
-              hitSlop={8}
-            >
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </Pressable>
-
-            {/* Primary Action Button: Dark Pill with Amber Circle Arrow */}
-            <Pressable
-              onPress={handleLogin}
-              disabled={isLoading || isGoogleLoading || !email || !password}
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                (!email || !password) && styles.disabledBtn,
-                pressed && styles.pressedBtn,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Log in"
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.primaryBtnText}>Log in</Text>
-                  <View style={styles.amberArrowBadge}>
-                    <ArrowRight size={18} color="#0D0E1A" strokeWidth={2.5} />
-                  </View>
-                </>
-              )}
-            </Pressable>
-
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* Continue with Google Button */}
+            {/* 'Continue with Google' Button FIRST */}
             <Pressable
               onPress={handleGoogleSignIn}
-              disabled={isLoading || isGoogleLoading}
+              disabled={isSubmitting || isGoogleLoading}
               style={({ pressed }) => [
                 styles.googleBtn,
-                pressed && styles.pressedBtn,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                },
+                pressed && styles.btnPressed,
               ]}
               accessibilityRole="button"
               accessibilityLabel="Continue with Google"
             >
               {isGoogleLoading ? (
-                <ActivityIndicator color="#0D0E1A" size="small" />
+                <ActivityIndicator size="small" color={theme.ink} />
               ) : (
-                <>
+                <View style={styles.googleBtnRow}>
                   <GoogleLogo size={20} />
-                  <Text style={styles.googleBtnText}>Continue with Google</Text>
-                </>
+                  <Text style={[styles.googleBtnText, { color: theme.ink }]}>
+                    Continue with Google
+                  </Text>
+                </View>
               )}
             </Pressable>
 
-            {/* Footer Navigation Link */}
-            <View style={styles.footerRow}>
-              <Text style={styles.footerText}>New to LUMI? </Text>
+            {/* 'or' divider */}
+            <View style={styles.dividerRow}>
+              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+              <Text style={[styles.dividerText, { color: theme.muted }]}>or</Text>
+              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+            </View>
+
+            {/* FORM FIELDS (20px spacing) */}
+            <View style={styles.formContainer}>
+              {/* 1. Email Field */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: theme.ink }]}>Email</Text>
+                <TextInput
+                  ref={emailInputRef}
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="you@example.com"
+                  placeholderTextColor={theme.placeholder}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
+                  editable={!isSubmitting}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: errors.email
+                        ? theme.error
+                        : focusedField === 'email'
+                        ? theme.accent
+                        : theme.border,
+                      borderWidth: focusedField === 'email' ? 2 : 1,
+                      color: theme.ink,
+                    },
+                  ]}
+                />
+                {errors.email && (
+                  <View style={styles.inlineErrorRow}>
+                    <AlertCircle size={14} color={theme.error} style={{ marginRight: 4 }} />
+                    <Text style={[styles.inlineErrorText, { color: theme.error }]}>
+                      {errors.email}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* 2. Password Field */}
+              <View style={styles.fieldGroup}>
+                <View style={styles.passwordLabelRow}>
+                  <Text style={[styles.fieldLabel, { color: theme.ink }]}>Password</Text>
+                  <Pressable
+                    onPress={() => router.push('/(auth)/forgot' as any)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.forgotText, { color: theme.accent }]}>
+                      Forgot password?
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <View
+                  style={[
+                    styles.passwordWrapper,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: errors.password
+                        ? theme.error
+                        : focusedField === 'password'
+                        ? theme.accent
+                        : theme.border,
+                      borderWidth: focusedField === 'password' ? 2 : 1,
+                    },
+                  ]}
+                >
+                  <TextInput
+                    ref={passwordInputRef}
+                    value={password}
+                    onChangeText={(text) => {
+                      setPassword(text);
+                      if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
+                    }}
+                    onFocus={() => {
+                    setFocusedField('password');
+                    focusedFieldRef.current = 'password';
+                    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+                  }}
+                    onBlur={() => setFocusedField(null)}
+                    secureTextEntry={!showPassword}
+                    placeholder="Password"
+                    placeholderTextColor={theme.placeholder}
+                    autoComplete="current-password"
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                    editable={!isSubmitting}
+                    style={[styles.passwordInput, { color: theme.ink }]}
+                  />
+
+                  {/* Show/Hide Password button (min 44px tap target) */}
+                  <Pressable
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeToggleBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    hitSlop={8}
+                  >
+                    {showPassword ? (
+                      <EyeOff size={20} color={theme.muted} />
+                    ) : (
+                      <Eye size={20} color={theme.muted} />
+                    )}
+                  </Pressable>
+                </View>
+
+                {errors.password && (
+                  <View style={styles.inlineErrorRow}>
+                    <AlertCircle size={14} color={theme.error} style={{ marginRight: 4 }} />
+                    <Text style={[styles.inlineErrorText, { color: theme.error }]}>
+                      {errors.password}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Primary Button 'Sign in' - ALWAYS SOLID PURPLE, NEVER DISABLED */}
               <Pressable
-                onPress={() => router.push('/(auth)/signup' as any)}
-                accessibilityRole="link"
-                accessibilityLabel="Create account"
-                hitSlop={8}
+                onPress={handleLogin}
+                disabled={isSubmitting || isGoogleLoading}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  { backgroundColor: theme.accent },
+                  pressed && styles.primaryBtnPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Sign in"
               >
-                <Text style={styles.footerLinkText}>Create account</Text>
+                {isSubmitting ? (
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={styles.primaryBtnText}>Signing in...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.primaryBtnText}>Sign in</Text>
+                )}
               </Pressable>
             </View>
-          </Animated.View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+            {/* Footer Line: "Don't have an account? Sign up" */}
+            <View style={styles.footerContainer}>
+              <Text style={[styles.footerText, { color: theme.muted }]}>
+                Don't have an account?{' '}
+                <Text
+                  onPress={() => router.replace('/(auth)/signup' as any)}
+                  style={[styles.footerLink, { color: theme.accent }]}
+                >
+                  Sign up
+                </Text>
+              </Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardContainer: {
+  screenContainer: {
     flex: 1,
-    backgroundColor: '#0D0E1A',
-  },
-  screenScroll: {
-    flex: 1,
-    backgroundColor: '#0D0E1A',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 28,
-  },
-  heroSection: {
-    backgroundColor: '#0D0E1A',
-    paddingHorizontal: 24,
-    paddingBottom: 28,
   },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 8,
   },
   logoText: {
-    fontSize: 22,
-    fontFamily: 'BricolageGrotesque_800ExtraBold',
-    color: '#FFFFFF',
-    letterSpacing: 2.5,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 1.5,
   },
-  themeCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#161829',
-    borderWidth: 1,
-    borderColor: '#242742',
+  topBarBtn: {
+    minHeight: 44,
+    minWidth: 44,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
-  oledContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  bottomSheet: {
-    flex: 1,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    paddingHorizontal: 24,
-    paddingTop: 32,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  sheetTitle: {
-    fontSize: 30,
-    fontFamily: 'BricolageGrotesque_700Bold',
-    letterSpacing: -0.5,
-  },
-  sheetSubtitle: {
+  topBarBtnText: {
     fontSize: 16,
-    fontFamily: 'Figtree_400Regular',
-    color: '#64748B',
-    marginTop: 6,
-    marginBottom: 26,
+    fontWeight: '600',
   },
-  errorBanner: {
-    padding: 12,
-    borderRadius: 14,
-    marginBottom: 16,
+  keyboardView: {
+    flex: 1,
   },
-  errorText: {
-    fontSize: 14,
-    fontFamily: 'Figtree_500Medium',
+  scrollView: {
+    flex: 1,
   },
-  forgotRow: {
-    alignSelf: 'flex-end',
-    marginTop: 2,
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+  },
+  faceScreenWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
     marginBottom: 24,
   },
-  forgotText: {
-    fontSize: 14,
-    fontFamily: 'Figtree_600SemiBold',
-    color: '#4F46E5',
-  },
-  primaryBtn: {
-    height: 58,
-    borderRadius: 20,
-    backgroundColor: '#0F1020',
+  generalErrorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingLeft: 24,
-    paddingRight: 12,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 20,
   },
-  primaryBtnText: {
-    fontSize: 17,
-    fontFamily: 'BricolageGrotesque_700Bold',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+  generalErrorText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+    flex: 1,
   },
-  amberArrowBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#F59E0B',
-    justifyContent: 'center',
+  googleBtn: {
+    height: 52,
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
-  disabledBtn: {
-    opacity: 0.45,
+  googleBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  pressedBtn: {
-    opacity: 0.88,
+  googleBtnText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  btnPressed: {
+    opacity: 0.85,
     transform: [{ scale: 0.99 }],
   },
-  divider: {
+  dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
-    gap: 12,
+    marginBottom: 24,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E2E8F0',
   },
   dividerText: {
-    fontSize: 13,
-    fontFamily: 'Figtree_500Medium',
-    color: '#94A3B8',
+    paddingHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '500',
   },
-  googleBtn: {
-    height: 56,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+  formContainer: {
+    gap: 20,
+  },
+  fieldGroup: {
+    gap: 6,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  passwordLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  forgotText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  input: {
+    height: 52,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+  },
+  passwordWrapper: {
+    height: 52,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingLeft: 16,
+    paddingRight: 6,
+  },
+  passwordInput: {
+    flex: 1,
+    height: '100%',
+    fontSize: 16,
+  },
+  eyeToggleBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  inlineErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  inlineErrorText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  primaryBtn: {
+    height: 52,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  primaryBtnPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  primaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
-  googleGContainer: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
+  footerContainer: {
+    marginTop: 24,
     alignItems: 'center',
-  },
-  googleGLetter: {
-    fontSize: 13,
-    fontFamily: 'Figtree_700Bold',
-    color: '#1E293B',
-  },
-  googleBtnText: {
-    fontSize: 16,
-    fontFamily: 'Figtree_600SemiBold',
-    color: '#0F172A',
-  },
-  footerRow: {
-    flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 8,
   },
   footerText: {
-    fontSize: 15,
-    fontFamily: 'Figtree_400Regular',
-    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '500',
   },
-  footerLinkText: {
-    fontSize: 15,
-    fontFamily: 'Figtree_600SemiBold',
-    color: '#4F46E5',
+  footerLink: {
+    fontWeight: '600',
   },
 });

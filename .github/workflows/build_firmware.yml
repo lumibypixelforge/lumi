@@ -3,7 +3,7 @@ name: Build ESP32-S3 Firmware
 on:
   push:
     paths:
-      - 'firmware/**'
+      - 'lumi_app/firmware/**'
       - '.github/workflows/build_firmware.yml'
   workflow_dispatch:
 
@@ -20,7 +20,7 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Build Firmware with ESP-IDF
-        working-directory: firmware/esp_idf_lumi
+        working-directory: lumi_app/firmware/esp_idf_lumi
         shell: bash
         run: |
           set -eo pipefail
@@ -51,7 +51,7 @@ jobs:
         run: |
           echo "## ❌ ESP-IDF Build Failed" >> $GITHUB_STEP_SUMMARY
           echo '```text' >> $GITHUB_STEP_SUMMARY
-          tail -n 100 firmware/esp_idf_lumi/build.log >> $GITHUB_STEP_SUMMARY || true
+          tail -n 100 lumi_app/firmware/esp_idf_lumi/build.log >> $GITHUB_STEP_SUMMARY || true
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Build Log on Failure
@@ -59,7 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idf-build-log
-          path: firmware/esp_idf_lumi/build.log
+          path: lumi_app/firmware/esp_idf_lumi/build.log
 
       - name: Upload Compiled Binaries
         if: success()
@@ -68,10 +68,10 @@ jobs:
           name: lumi-esp32s3-binaries
           if-no-files-found: error
           path: |
-            firmware/esp_idf_lumi/build/lumi_merged.bin
-            firmware/esp_idf_lumi/build/bootloader/bootloader.bin
-            firmware/esp_idf_lumi/build/partition_table/partition-table.bin
-            firmware/esp_idf_lumi/build/lumi_robot.bin
+            lumi_app/firmware/esp_idf_lumi/build/lumi_merged.bin
+            lumi_app/firmware/esp_idf_lumi/build/bootloader/bootloader.bin
+            lumi_app/firmware/esp_idf_lumi/build/partition_table/partition-table.bin
+            lumi_app/firmware/esp_idf_lumi/build/lumi_robot.bin
 
       - name: Log Build Success
         if: success()
@@ -80,4 +80,3 @@ jobs:
           echo "- **Target:** ESP32-S3 (16MB Flash, 8MB Octal PSRAM)" >> $GITHUB_STEP_SUMMARY
           echo "- **App Partition:** 8MB (LiveKit WebRTC + Video Codec + Camera + OLED)" >> $GITHUB_STEP_SUMMARY
           echo "- **Artifacts:** \`lumi_merged.bin\` (1-click web flasher at 0x0) and individual binaries" >> $GITHUB_STEP_SUMMARY
-

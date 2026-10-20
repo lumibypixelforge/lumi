@@ -12,7 +12,17 @@ import {
   type RemoteTrackPublication,
   type RemoteParticipant,
 } from 'livekit-client';
-import { AudioSession } from '@livekit/react-native';
+import { NativeModules } from 'react-native';
+
+let AudioSession: any = null;
+try {
+  if (NativeModules && NativeModules.WebRTCModule) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    AudioSession = require('@livekit/react-native').AudioSession;
+  }
+} catch {
+  // Expo Go safe fallback
+}
 import { supabase } from '../../lib/supabase';
 import type {
   ConnectionState,
@@ -234,7 +244,7 @@ export const livekitLiveService: LiveService = {
 
       // 2. Start native audio session
       try {
-        await AudioSession.startAudioSession();
+        if (AudioSession?.startAudioSession) { await AudioSession.startAudioSession(); }
       } catch (audioErr) {
         console.warn('[LiveKit] AudioSession init warning:', audioErr);
       }
@@ -416,7 +426,7 @@ export const livekitLiveService: LiveService = {
     }
 
     try {
-      await AudioSession.stopAudioSession();
+      if (AudioSession?.stopAudioSession) { await AudioSession.stopAudioSession(); }
     } catch (audioErr) {
       console.warn('[LiveKit] AudioSession stop warning:', audioErr);
     }

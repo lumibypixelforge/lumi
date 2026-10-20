@@ -6,7 +6,24 @@
  * Emotions & Gestures drawer, live telemetry HUD, and End Session flow.
  */
 
-import { VideoView } from '@livekit/react-native';
+import { NativeModules } from 'react-native';
+
+let LiveKitVideoView: any = null;
+try {
+  if (NativeModules && NativeModules.WebRTCModule) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    LiveKitVideoView = require('@livekit/react-native').VideoView;
+  }
+} catch {
+  // Expo Go fallback
+}
+
+const VideoView = ({ videoTrack, style, objectFit }: any) => {
+  if (LiveKitVideoView) {
+    return <LiveKitVideoView videoTrack={videoTrack} style={style} objectFit={objectFit} />;
+  }
+  return <View style={[style, { backgroundColor: '#000000' }]} />;
+};
 import {
   AudioModule,
   setAudioModeAsync,

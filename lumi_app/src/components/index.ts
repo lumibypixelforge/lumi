@@ -4,3 +4,5 @@ export * from './StatusPill';
 export * from './OtpInput';
 export * from './RobotFace';
 export * from './OledEyePanel';
+
+export * from './LumiFaceScreen';

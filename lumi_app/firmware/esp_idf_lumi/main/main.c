@@ -33,6 +33,7 @@
 #include "esp_rom_sys.h"
 #include <math.h>
 #include "mbedtls/base64.h"
+#include "lwip/sockets.h"
 
 // LiveKit SDK
 #include "livekit.h"
@@ -629,10 +630,18 @@ static esp_err_t save_wifi_credentials_nvs(const char *ssid, const char *pass) {
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
+        // Only attempt connection if credentials exist in memory
+        if (strlen(s_wifi_ssid) > 0) {
+            esp_wifi_connect();
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-        esp_wifi_connect();
+        // Only attempt reconnection if an SSID is configured!
+        // This eliminates the infinite reconnect loop & watchdog boot loop when unprovisioned.
+        if (strlen(s_wifi_ssid) > 0) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_wifi_connect();
+        }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         snprintf(s_robot_ip, sizeof(s_robot_ip), IPSTR, IP2STR(&event->ip_info.ip));
@@ -795,6 +804,101 @@ static esp_err_t captive_redirect_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// ==============================================================================
+// CAPTIVE PORTAL DNS SERVER (UDP PORT 53)
+// Intercepts all mobile phone domain lookups and resolves them to 192.168.4.1
+// ==============================================================================
+static TaskHandle_t s_dns_task_handle = NULL;
+static int s_dns_sock = -1;
+
+static void dns_server_task(void *pvParameters) {
+    uint8_t rx_buffer[256];
+    uint8_t tx_buffer[256];
+    struct sockaddr_in server_addr;
+    struct sockaddr_in client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+
+    s_dns_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (s_dns_sock < 0) {
+        ESP_LOGE(TAG, "Unable to create DNS socket");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_port = htons(53);
+
+    if (bind(s_dns_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        ESP_LOGE(TAG, "DNS socket bind failed");
+        close(s_dns_sock);
+        s_dns_sock = -1;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Captive DNS Server active on port 53 (resolves all queries to 192.168.4.1)");
+
+    while (1) {
+        int len = recvfrom(s_dns_sock, rx_buffer, sizeof(rx_buffer), 0,
+                           (struct sockaddr *)&client_addr, &client_addr_len);
+        if (len < 12) {
+            continue;
+        }
+
+        // Standard DNS response: answers question with IP 192.168.4.1
+        memcpy(tx_buffer, rx_buffer, len);
+        tx_buffer[2] = 0x81;
+        tx_buffer[3] = 0x80;
+        tx_buffer[6] = 0x00;
+        tx_buffer[7] = 0x01; // Answer count = 1
+
+        int idx = len;
+        tx_buffer[idx++] = 0xC0; // Domain name pointer (0xC00C)
+        tx_buffer[idx++] = 0x0C;
+        tx_buffer[idx++] = 0x00; // Type A
+        tx_buffer[idx++] = 0x01;
+        tx_buffer[idx++] = 0x00; // Class IN
+        tx_buffer[idx++] = 0x01;
+        tx_buffer[idx++] = 0x00; // TTL 60s
+        tx_buffer[idx++] = 0x00;
+        tx_buffer[idx++] = 0x00;
+        tx_buffer[idx++] = 0x3C;
+        tx_buffer[idx++] = 0x00; // Data length 4 bytes (IPv4)
+        tx_buffer[idx++] = 0x04;
+        tx_buffer[idx++] = 192;  // 192.168.4.1
+        tx_buffer[idx++] = 168;
+        tx_buffer[idx++] = 4;
+        tx_buffer[idx++] = 1;
+
+        sendto(s_dns_sock, tx_buffer, idx, 0, (struct sockaddr *)&client_addr, client_addr_len);
+    }
+}
+
+static void start_dns_server(void) {
+    if (!s_dns_task_handle) {
+        xTaskCreate(dns_server_task, "dns_task", 3072, NULL, 5, &s_dns_task_handle);
+    }
+}
+
+static void stop_dns_server(void) {
+    if (s_dns_sock >= 0) {
+        close(s_dns_sock);
+        s_dns_sock = -1;
+    }
+    if (s_dns_task_handle) {
+        vTaskDelete(s_dns_task_handle);
+        s_dns_task_handle = NULL;
+    }
+}
+
+static esp_err_t captive_404_error_handler(httpd_req_t *req, httpd_err_code_t err) {
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
 static httpd_handle_t start_wifi_prov_portal(void) {
     if (s_prov_httpd) return s_prov_httpd;
 
@@ -845,12 +949,19 @@ static httpd_handle_t start_wifi_prov_portal(void) {
         };
         httpd_register_uri_handler(s_prov_httpd, &apple_uri);
 
+        // Catch-all 404 wildcard redirect to http://192.168.4.1
+        httpd_register_err_handler(s_prov_httpd, HTTPD_404_NOT_FOUND, captive_404_error_handler);
+
+        // Start Captive DNS server to resolve all lookups to 192.168.4.1
+        start_dns_server();
+
         ESP_LOGI(TAG, "🌐 Wi-Fi Provisioning Portal active on http://192.168.4.1:80");
     }
     return s_prov_httpd;
 }
 
 static void stop_wifi_prov_portal(void) {
+    stop_dns_server();
     if (s_prov_httpd) {
         httpd_stop(s_prov_httpd);
         s_prov_httpd = NULL;
@@ -883,10 +994,6 @@ static void init_wifi(void) {
                                                         NULL,
                                                         &instance_got_ip));
 
-    wifi_config_t wifi_sta_config = {0};
-    strncpy((char *)wifi_sta_config.sta.ssid, s_wifi_ssid, sizeof(wifi_sta_config.sta.ssid) - 1);
-    strncpy((char *)wifi_sta_config.sta.password, s_wifi_pass, sizeof(wifi_sta_config.sta.password) - 1);
-
     wifi_config_t wifi_ap_config = {
         .ap = {
             .ssid = "LUMI-Setup",
@@ -899,8 +1006,15 @@ static void init_wifi(void) {
     };
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
+
+    // Only configure station interface if credentials exist in NVS!
+    if (strlen(s_wifi_ssid) > 0) {
+        wifi_config_t wifi_sta_config = {0};
+        strncpy((char *)wifi_sta_config.sta.ssid, s_wifi_ssid, sizeof(wifi_sta_config.sta.ssid) - 1);
+        strncpy((char *)wifi_sta_config.sta.password, s_wifi_pass, sizeof(wifi_sta_config.sta.password) - 1);
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
+    }
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
