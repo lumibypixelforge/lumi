@@ -49,6 +49,8 @@ import {
   Smile,
   Sparkles,
   Video,
+  Volume2,
+  VolumeX,
   Wifi,
   X,
   Zap,
@@ -87,6 +89,7 @@ import {
   sessionService,
   setRobotMicrophone,
   subscribeToCloudVideoFrame,
+  subscribeToRobotAudio,
   subscribeToRobotVideoTrack,
 } from '../../../src/services';
 import { spacing } from '../../../src/theme/tokens';
@@ -128,129 +131,69 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
   onHasCloudFrameChange,
   connectionState,
 }: DoubleBufferedCameraFeedProps) {
-  // Dual-slot ping-pong buffer ensures 0% flicker:
-  // Slot A and Slot B alternate so the active frame remains 100% visible while the new frame loads.
-  const [frameA, setFrameA] = useState<string | null>(null);
-  const [frameB, setFrameB] = useState<string | null>(null);
-  const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
-  const activeSlotRef = useRef<'A' | 'B'>('A');
-  const hasInitialFrameRef = useRef<boolean>(false);
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 100% Zero-Blanking Atomic Latch:
+  // - activeFrame remains 100% rendered on screen
+  // - incoming stagingFrame is decoded in background
+  // - Only when incoming stagingFrame onLoad fires does it promote to activeFrame
+  // Result: Absolute zero black flashes, zero flicker, smooth persistent visual stream.
+  const [activeFrame, setActiveFrame] = useState<string | null>(null);
+  const [stagingFrame, setStagingFrame] = useState<string | null>(null);
+  const stagingUriRef = useRef<string | null>(null);
 
   // Clean reset on reconnect so video feed never freezes on stale frame
   useEffect(() => {
     if (connectionState === 'connecting' || connectionState === 'reconnecting') {
-      hasInitialFrameRef.current = false;
-      if (fallbackTimerRef.current) {
-        clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = null;
-      }
+      stagingUriRef.current = null;
     }
   }, [connectionState]);
 
   useEffect(() => {
     let mounted = true;
     const unsub = subscribeToCloudVideoFrame((uri) => {
-      if (!mounted) return;
-      if (uri) {
-        onHasCloudFrameChange?.(true);
+      if (!mounted || !uri) return;
+      onHasCloudFrameChange?.(true);
 
-        // Immediate first-frame rendering: seed Slot A directly so image shows instantly with opacity 1
-        if (!hasInitialFrameRef.current) {
-          hasInitialFrameRef.current = true;
-          setFrameA(uri);
-          setActiveSlot('A');
-          activeSlotRef.current = 'A';
-          return;
-        }
-
-        // Ping-pong: stage the next frame into the background slot
-        const targetSlot = activeSlotRef.current === 'A' ? 'B' : 'A';
-        if (targetSlot === 'B') {
-          setFrameB(uri);
-        } else {
-          setFrameA(uri);
-        }
-
-        // Auto-swap watchdog: if React Native Image onLoad drops or delays,
-        // force swap within 70ms so consecutive frames never get blocked behind a stale slot
-        if (fallbackTimerRef.current) {
-          clearTimeout(fallbackTimerRef.current);
-        }
-        fallbackTimerRef.current = setTimeout(() => {
-          if (mounted) {
-            activeSlotRef.current = targetSlot;
-            setActiveSlot(targetSlot);
-          }
-        }, 70);
-      } else {
-        // If stream momentarily drops or reconnects, keep last frame on screen
-        // instead of flashing completely blank/black
-        onHasCloudFrameChange?.(false);
+      // Seed first frame instantly
+      if (!activeFrame) {
+        setActiveFrame(uri);
+        return;
       }
+
+      stagingUriRef.current = uri;
+      setStagingFrame(uri);
     });
 
     return () => {
       mounted = false;
-      if (fallbackTimerRef.current) {
-        clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = null;
-      }
       unsub();
     };
-  }, [onHasCloudFrameChange]);
+  }, [activeFrame, onHasCloudFrameChange]);
 
-  const handleFrameALoad = () => {
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
+  const handleStagingLoad = () => {
+    if (stagingUriRef.current) {
+      setActiveFrame(stagingUriRef.current);
     }
-    activeSlotRef.current = 'A';
-    setActiveSlot('A');
   };
 
-  const handleFrameBLoad = () => {
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
-    }
-    activeSlotRef.current = 'B';
-    setActiveSlot('B');
-  };
-
-  // If only one frame exists, guarantee it is 100% visible so the viewport never shows black
-  const showOnlyA = !!frameA && !frameB;
-  const showOnlyB = !frameA && !!frameB;
-  const opacityA = showOnlyA || activeSlot === 'A' ? 1 : 0;
-  const opacityB = showOnlyB || activeSlot === 'B' ? 1 : 0;
-
-  if (frameA || frameB) {
+  if (activeFrame) {
     return (
       <View style={StyleSheet.absoluteFill}>
-        {frameA && (
+        {/* Active visible frame - stays 100% visible at all times */}
+        <Image
+          source={{ uri: activeFrame }}
+          style={styles.cameraImageFull}
+          resizeMode="cover"
+          fadeDuration={0}
+        />
+
+        {/* Staging frame pre-decoding offscreen */}
+        {stagingFrame && stagingFrame !== activeFrame && (
           <Image
-            source={{ uri: frameA }}
-            style={[
-              styles.cameraImageFull,
-              { opacity: opacityA },
-            ]}
-            resizeMode="contain"
+            source={{ uri: stagingFrame }}
+            style={[styles.cameraImageFull, { opacity: 0.01 }]}
+            resizeMode="cover"
             fadeDuration={0}
-            onLoad={handleFrameALoad}
-            onError={handleFrameBLoad}
-          />
-        )}
-        {frameB && (
-          <Image
-            source={{ uri: frameB }}
-            style={[
-              styles.cameraImageFull,
-              { opacity: opacityB },
-            ]}
-            resizeMode="contain"
-            fadeDuration={0}
-            onLoad={handleFrameBLoad}
-            onError={handleFrameALoad}
+            onLoad={handleStagingLoad}
           />
         )}
       </View>
@@ -262,7 +205,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
       <VideoView
         videoTrack={videoTrack}
         style={StyleSheet.absoluteFill}
-        objectFit="contain"
+        objectFit="cover"
       />
     );
   }
@@ -272,7 +215,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
       <Image
         source={{ uri: `${cameraStreamUrl}/stream` }}
         style={styles.cameraImageFull}
-        resizeMode="contain"
+        resizeMode="cover"
         fadeDuration={0}
       />
     );
@@ -301,6 +244,9 @@ export default function DriveScreen() {
 
   // Speed Mode: 0.5 (slow), 1.0 (normal), 1.5 (fast)
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1.0);
+
+  // Robot Room Audio Listen toggle (listen to audio streamed from robot mic)
+  const [isAudioListening, setIsAudioListening] = useState(false);
 
   // PTT State
   const [isTalking, setIsTalking] = useState(false);
@@ -367,6 +313,19 @@ export default function DriveScreen() {
       unsubTrack();
     };
   }, []);
+
+  // Subscribe to live robot room audio when listening toggle is active
+  useEffect(() => {
+    if (!isAudioListening) return;
+
+    const unsubAudio = subscribeToRobotAudio((_pcmBytes) => {
+      // Incoming 16kHz 16-bit PCM chunks captured from ESP32-S3 microphone on GPIO 1
+    });
+
+    return () => {
+      unsubAudio();
+    };
+  }, [isAudioListening]);
 
   const handleBackPress = useCallback(() => {
     controlChannel.stopDriving();
@@ -760,18 +719,20 @@ export default function DriveScreen() {
             onPress={handleBackPress}
             hitSlop={8}
             style={styles.circleIconBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
-            <ChevronLeft size={22} color="#1E293B" />
+            <ChevronLeft size={20} color="#F8FAFC" />
           </Pressable>
 
           {/* Avatar with purple robot smile */}
           <View style={styles.avatarWrap}>
-            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-              <SvgCircle cx={7.5} cy={8.5} r={1.6} fill="#634AF6" />
-              <SvgCircle cx={16.5} cy={8.5} r={1.6} fill="#634AF6" />
+            <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+              <SvgCircle cx={7.5} cy={8.5} r={1.6} fill="#00F0FF" />
+              <SvgCircle cx={16.5} cy={8.5} r={1.6} fill="#00F0FF" />
               <SvgPath
                 d="M8 14.5 C9.5 17.5 14.5 17.5 16 14.5"
-                stroke="#634AF6"
+                stroke="#00F0FF"
                 strokeWidth={2}
                 strokeLinecap="round"
               />
@@ -783,7 +744,7 @@ export default function DriveScreen() {
             <Text style={styles.robotHudName}>{(robot?.name || 'LUMI').toUpperCase()}</Text>
             <View style={styles.liveBadgeRow}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Live · {formatTimer(elapsedSeconds)}</Text>
+              <Text style={styles.liveText}>LIVE · {formatTimer(elapsedSeconds)}</Text>
             </View>
           </View>
         </View>
@@ -793,41 +754,76 @@ export default function DriveScreen() {
           onPress={handleConfirmEndSession}
           style={styles.endCallBtn}
           hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="End session"
         >
-          <PhoneOff size={20} color="#DC2626" />
+          <PhoneOff size={18} color="#EF4444" />
         </Pressable>
       </View>
 
       {/* ── Status Banner (if weak or reconnecting) ── */}
       {connectionState === 'weak' && (
-        <View style={[styles.statusBanner, { backgroundColor: '#FEF08A' }]}>
-          <Text style={[styles.statusBannerText, { color: '#854D0E' }]}>
+        <View style={[styles.statusBanner, { backgroundColor: 'rgba(234, 179, 8, 0.15)', borderColor: 'rgba(234, 179, 8, 0.3)' }]}>
+          <Text style={[styles.statusBannerText, { color: '#FACC15' }]}>
             {t('live.weakConnection', 'Weak connection — video may lag')}
           </Text>
         </View>
       )}
 
       {connectionState === 'reconnecting' && (
-        <View style={[styles.statusBanner, { backgroundColor: '#FED7AA' }]}>
-          <RefreshCw size={14} color="#C2410C" style={{ marginRight: 6 }} />
-          <Text style={[styles.statusBannerText, { color: '#C2410C' }]}>
+        <View style={[styles.statusBanner, { backgroundColor: 'rgba(249, 115, 22, 0.15)', borderColor: 'rgba(249, 115, 22, 0.3)' }]}>
+          <RefreshCw size={13} color="#FB923C" style={{ marginRight: 6 }} />
+          <Text style={[styles.statusBannerText, { color: '#FB923C' }]}>
             {t('live.reconnecting', 'Reconnecting to LUMI…')}
           </Text>
         </View>
       )}
 
-      {/* ── Camera Viewport Card ── */}
+      {/* ── Camera Viewport Card (FPV Cinema Viewport) ── */}
       <View style={styles.cameraViewportCard}>
-        {/* Badges on Top-Left */}
+        {/* Aerospace HUD Corner Reticles */}
+        <View style={styles.reticleTopLeft} pointerEvents="none" />
+        <View style={styles.reticleTopRight} pointerEvents="none" />
+        <View style={styles.reticleBottomLeft} pointerEvents="none" />
+        <View style={styles.reticleBottomRight} pointerEvents="none" />
+
+        {/* Badges on Top-Left: Latency & Battery */}
         <View style={styles.cameraBadgesRow}>
           <View style={styles.badgePill}>
-            <Wifi size={14} color="#10B981" />
-            <Text style={styles.badgeText}>{telemetry.latencyMs || 40} ms</Text>
+            <Wifi size={13} color="#10B981" />
+            <Text style={[styles.badgeText, { color: '#10B981' }]}>{telemetry.latencyMs || 40} ms</Text>
           </View>
           <View style={styles.badgePill}>
-            <BatteryMedium size={15} color="#0F172A" />
-            <Text style={styles.badgeText}>{telemetry.batteryPercent || 90}%</Text>
+            <BatteryMedium size={14} color="#00F0FF" />
+            <Text style={[styles.badgeText, { color: '#00F0FF' }]}>{telemetry.batteryPercent || 90}%</Text>
           </View>
+        </View>
+
+        {/* Badges on Top-Right: Listen to Robot Audio Toggle */}
+        <View style={styles.cameraTopRightBadgesRow}>
+          <Pressable
+            onPress={() => {
+              haptics.selection();
+              setIsAudioListening((prev) => !prev);
+            }}
+            style={[
+              styles.badgePill,
+              styles.listenPill,
+              isAudioListening && styles.listenPillActive,
+            ]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={isAudioListening ? 'Mute robot mic' : 'Listen to robot mic'}
+          >
+            {isAudioListening ? (
+              <Volume2 size={14} color="#00F0FF" />
+            ) : (
+              <VolumeX size={14} color="#94A3B8" />
+            )}
+            <Text style={[styles.badgeText, { color: isAudioListening ? '#00F0FF' : '#94A3B8' }]}>
+              {isAudioListening ? 'Listening' : 'Muted'}
+            </Text>
+          </Pressable>
         </View>
 
         {/* Camera Feed or Placeholder */}
@@ -841,7 +837,7 @@ export default function DriveScreen() {
         ) : (
           <View style={styles.cameraPlaceholder}>
             <Video size={36} color="#64748B" />
-            <Text style={styles.cameraPlaceholderText}>Live camera view</Text>
+            <Text style={styles.cameraPlaceholderText}>Connecting video feed…</Text>
           </View>
         )}
 
@@ -852,8 +848,10 @@ export default function DriveScreen() {
           onPress={() => {
             haptics.selection();
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Fullscreen"
         >
-          <Maximize2 size={18} color="#1E293B" />
+          <Maximize2 size={16} color="#F8FAFC" />
         </Pressable>
       </View>
 
@@ -869,10 +867,10 @@ export default function DriveScreen() {
           {/* Speed Selector Pill */}
           <View style={styles.speedSelectorPill}>
             {[
-              { val: 0.5, label: '0.5×' },
-              { val: 1.0, label: '1×' },
-              { val: 1.5, label: '1.5×' },
-            ].map(({ val, label }) => {
+              { val: 0.5, label: 'ECO', activeColor: '#00F0FF' },
+              { val: 1.0, label: 'NORM', activeColor: '#A78BFA' },
+              { val: 1.5, label: 'SPORT', activeColor: '#F59E0B' },
+            ].map(({ val, label, activeColor }) => {
               const isActive = speedMultiplier === val;
               return (
                 <Pressable
@@ -881,12 +879,16 @@ export default function DriveScreen() {
                     haptics.selection();
                     setSpeedMultiplier(val);
                   }}
-                  style={[styles.speedOption, isActive && styles.speedOptionActive]}
+                  style={[
+                    styles.speedOption,
+                    isActive && { backgroundColor: activeColor + '22', borderColor: activeColor + '55', borderWidth: 1 },
+                  ]}
+                  accessibilityRole="button"
                 >
                   <Text
                     style={[
                       styles.speedOptionText,
-                      isActive && styles.speedOptionTextActive,
+                      isActive && { color: activeColor, fontWeight: '800' },
                     ]}
                   >
                     {label}
@@ -900,10 +902,12 @@ export default function DriveScreen() {
           <Pressable
             onPress={() => setShowDrawer(true)}
             style={styles.emotesPillBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Emotes and tricks"
           >
-            <Smile size={19} color="#634AF6" />
+            <Smile size={17} color="#A78BFA" />
             <Text style={styles.emotesPillText}>Emotes</Text>
-            <ChevronUp size={16} color="#475569" />
+            <ChevronUp size={15} color="#94A3B8" />
           </Pressable>
         </View>
 
@@ -912,16 +916,21 @@ export default function DriveScreen() {
           {/* Left Column: Virtual Joystick */}
           <View style={styles.joystickColumn}>
             <View style={styles.joystickBase} {...panResponder.panHandlers}>
-              {/* Directional Chevrons */}
-              <ChevronUp size={24} color="#94A3B8" style={styles.arrowTop} />
-              <ChevronDown size={24} color="#94A3B8" style={styles.arrowBottom} />
-              <ChevronLeft size={24} color="#94A3B8" style={styles.arrowLeft} />
-              <ChevronRight size={24} color="#94A3B8" style={styles.arrowRight} />
+              {/* Concentric Guide Ring */}
+              <View style={styles.joystickInnerRing} pointerEvents="none" />
 
-              {/* Draggable Purple Puck */}
-              <Animated.View style={[styles.joystickPuck, animatedPuckStyle]} />
+              {/* Directional Chevrons */}
+              <ChevronUp size={22} color="#64748B" style={styles.arrowTop} />
+              <ChevronDown size={22} color="#64748B" style={styles.arrowBottom} />
+              <ChevronLeft size={22} color="#64748B" style={styles.arrowLeft} />
+              <ChevronRight size={22} color="#64748B" style={styles.arrowRight} />
+
+              {/* Draggable Illuminated Puck */}
+              <Animated.View style={[styles.joystickPuck, animatedPuckStyle]}>
+                <View style={styles.joystickPuckCore} />
+              </Animated.View>
             </View>
-            <Text style={styles.columnLabel}>Drive</Text>
+            <Text style={styles.columnLabel}>DRIVE</Text>
           </View>
 
           {/* Right Column: Stop & Hold to talk */}
@@ -931,10 +940,12 @@ export default function DriveScreen() {
               <Pressable
                 onPress={handleEmergencyStop}
                 style={styles.stopCircleBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Emergency stop"
               >
                 <View style={styles.stopInnerSquare} />
               </Pressable>
-              <Text style={styles.stopLabel}>Stop</Text>
+              <Text style={styles.stopLabel}>STOP</Text>
             </View>
 
             {/* Purple Mic Button with Lock Toggle */}
@@ -943,7 +954,7 @@ export default function DriveScreen() {
                 <Animated.View
                   style={[
                     styles.pttWavePulse,
-                    { backgroundColor: '#634AF6' },
+                    { backgroundColor: '#7C3AED' },
                     animatedWaveStyle,
                   ]}
                 />
@@ -957,8 +968,10 @@ export default function DriveScreen() {
                     styles.micMainBtn,
                     (isTalking || isMicLocked) && styles.micMainBtnActive,
                   ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Hold to talk"
                 >
-                  <Mic size={38} color="#FFFFFF" />
+                  <Mic size={34} color="#FFFFFF" />
                 </Pressable>
 
                 {/* Lock Toggle Badge */}
@@ -974,23 +987,28 @@ export default function DriveScreen() {
                       stopAudioCapture();
                     }
                   }}
-                  style={styles.micLockBadge}
+                  style={[
+                    styles.micLockBadge,
+                    isMicLocked && styles.micLockBadgeActive,
+                  ]}
                   hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={isMicLocked ? 'Unlock microphone' : 'Lock microphone on'}
                 >
                   <Lock
-                    size={14}
-                    color={isMicLocked ? '#634AF6' : '#64748B'}
-                    strokeWidth={2.2}
+                    size={13}
+                    color={isMicLocked ? '#00F0FF' : '#94A3B8'}
+                    strokeWidth={2.4}
                   />
                 </Pressable>
               </View>
 
               <Text style={styles.columnLabel}>
                 {isMicLocked
-                  ? t('live.micLocked', 'MIC ON')
+                  ? 'MIC ACTIVE'
                   : isTalking
-                    ? 'Talking…'
-                    : t('live.pushToTalk', 'Hold to talk')}
+                    ? 'TALKING…'
+                    : 'HOLD TO TALK'}
               </Text>
             </View>
           </View>
@@ -1011,15 +1029,17 @@ export default function DriveScreen() {
           <Pressable style={styles.drawerCard} onPress={(e) => e.stopPropagation()}>
             <View style={styles.drawerHeader}>
               <View style={styles.drawerHeaderLeft}>
-                <Sparkles size={20} color="#634AF6" />
+                <Sparkles size={18} color="#00F0FF" />
                 <Text style={styles.drawerTitle}>Emotions & Gestures</Text>
               </View>
               <Pressable
                 onPress={() => setShowDrawer(false)}
                 hitSlop={8}
                 style={styles.closeDrawerBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
               >
-                <X size={20} color="#64748B" />
+                <X size={18} color="#94A3B8" />
               </Pressable>
             </View>
 
@@ -1039,13 +1059,13 @@ export default function DriveScreen() {
                       ]}
                     >
                       <Icon
-                        size={20}
-                        color={isCurrent ? '#634AF6' : '#64748B'}
+                        size={18}
+                        color={isCurrent ? '#00F0FF' : '#94A3B8'}
                       />
                       <Text
                         style={[
                           styles.drawerEmoteText,
-                          isCurrent && { color: '#634AF6', fontWeight: '700' },
+                          isCurrent && { color: '#00F0FF', fontWeight: '700' },
                         ]}
                       >
                         {label}
@@ -1092,15 +1112,15 @@ export default function DriveScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F9',
+    backgroundColor: '#090812',
   },
   topHud: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'transparent',
+    backgroundColor: '#090812',
   },
   headerLeftGroup: {
     flexDirection: 'row',
@@ -1108,23 +1128,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   circleIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#151326',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
   },
   avatarWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#EDE9FE',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1132,10 +1151,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   robotHudName: {
-    color: '#0F172A',
+    color: '#F8FAFC',
     fontWeight: '800',
-    fontSize: 18,
-    letterSpacing: -0.2,
+    fontSize: 16,
+    letterSpacing: 0.5,
   },
   liveBadgeRow: {
     flexDirection: 'row',
@@ -1144,28 +1163,26 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#EF4444',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#00F0FF',
   },
   liveText: {
-    color: '#64748B',
-    fontSize: 13,
-    fontWeight: '500',
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   endCallBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FEE2E2',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 2,
   },
   statusBanner: {
     flexDirection: 'row',
@@ -1173,35 +1190,105 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 6,
     paddingHorizontal: 16,
-    marginHorizontal: 20,
+    marginHorizontal: 18,
     marginBottom: 8,
-    borderRadius: 12,
+    borderRadius: 10,
+    borderWidth: 1,
   },
   statusBannerText: {
     fontSize: 12,
     fontWeight: '700',
   },
   cameraViewportCard: {
-    marginHorizontal: 20,
+    marginHorizontal: 18,
     flex: 1,
-    maxHeight: 280,
-    minHeight: 210,
-    backgroundColor: '#E8EAF5',
-    borderRadius: 28,
+    maxHeight: 290,
+    minHeight: 220,
+    backgroundColor: '#05040A',
+    borderRadius: 22,
     overflow: 'hidden',
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#00F0FF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   cameraImageFull: {
     width: '100%',
     height: '100%',
     position: 'absolute',
   },
+  reticleTopLeft: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 14,
+    height: 14,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderColor: '#00F0FF',
+    opacity: 0.75,
+    zIndex: 6,
+  },
+  reticleTopRight: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 14,
+    height: 14,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
+    borderColor: '#00F0FF',
+    opacity: 0.75,
+    zIndex: 6,
+  },
+  reticleBottomLeft: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    width: 14,
+    height: 14,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderColor: '#00F0FF',
+    opacity: 0.75,
+    zIndex: 6,
+  },
+  reticleBottomRight: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    width: 14,
+    height: 14,
+    borderBottomWidth: 2,
+    borderRightWidth: 2,
+    borderColor: '#00F0FF',
+    opacity: 0.75,
+    zIndex: 6,
+  },
   cameraBadgesRow: {
     position: 'absolute',
-    top: 14,
-    left: 14,
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 10,
+  },
+  cameraTopRightBadgesRow: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
     flexDirection: 'row',
     gap: 8,
     zIndex: 10,
@@ -1210,124 +1297,111 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(9, 8, 16, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+  },
+  listenPill: {
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  listenPillActive: {
+    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+    borderColor: 'rgba(0, 240, 255, 0.4)',
   },
   badgeText: {
-    color: '#0F172A',
-    fontSize: 13,
+    color: '#F8FAFC',
+    fontSize: 12,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
   cameraPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
   },
   cameraPlaceholderText: {
     color: '#64748B',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
+    letterSpacing: 0.4,
   },
   fullscreenBtn: {
     position: 'absolute',
-    bottom: 14,
-    right: 14,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    bottom: 12,
+    right: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(9, 8, 16, 0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
   },
   bottomSheet: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    marginTop: 16,
-    paddingHorizontal: 24,
-    paddingTop: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    elevation: 4,
+    backgroundColor: '#110F20',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginTop: 14,
+    paddingHorizontal: 22,
+    paddingTop: 18,
   },
   sheetTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   speedSelectorPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F3F9',
-    borderRadius: 28,
-    padding: 4,
+    backgroundColor: '#18152B',
+    borderRadius: 24,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   speedOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 22,
-  },
-  speedOptionActive: {
-    backgroundColor: '#634AF6',
-    paddingHorizontal: 18,
-    shadowColor: '#634AF6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 2,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   speedOptionText: {
-    color: '#475569',
-    fontSize: 14,
+    color: '#64748B',
+    fontSize: 12,
     fontWeight: '700',
-  },
-  speedOptionTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   emotesPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 28,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    gap: 7,
+    backgroundColor: '#18152B',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.28)',
   },
   emotesPillText: {
-    color: '#1E293B',
-    fontSize: 15,
+    color: '#F8FAFC',
+    fontSize: 13,
     fontWeight: '700',
   },
   consoleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
   },
   joystickColumn: {
     alignItems: 'center',
@@ -1336,49 +1410,86 @@ const styles = StyleSheet.create({
     width: 196,
     height: 196,
     borderRadius: 98,
-    backgroundColor: '#F0F2FA',
+    backgroundColor: '#161329',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.45,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  joystickInnerRing: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   arrowTop: {
     position: 'absolute',
-    top: 14,
-    left: 86,
+    top: 12,
+    left: 87,
   },
   arrowBottom: {
     position: 'absolute',
-    bottom: 14,
-    left: 86,
+    bottom: 12,
+    left: 87,
   },
   arrowLeft: {
     position: 'absolute',
-    left: 14,
-    top: 86,
+    left: 12,
+    top: 87,
   },
   arrowRight: {
     position: 'absolute',
-    right: 14,
-    top: 86,
+    right: 12,
+    top: 87,
   },
   joystickPuck: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: '#634AF6',
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
-    shadowColor: '#634AF6',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: '#7C3AED',
+    borderWidth: 3,
+    borderColor: 'rgba(0, 240, 255, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7C3AED',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.6,
+        shadowRadius: 14,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
+  },
+  joystickPuckCore: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#00F0FF',
+    opacity: 0.9,
   },
   columnLabel: {
-    color: '#475569',
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 12,
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginTop: 10,
   },
   actionsColumn: {
     alignItems: 'center',
@@ -1389,94 +1500,108 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   stopCircleBtn: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    backgroundColor: '#E11D48',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#991B1B',
+    borderWidth: 2.5,
+    borderColor: '#EF4444',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#E11D48',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#EF4444',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.45,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   stopInnerSquare: {
     width: 20,
     height: 20,
     backgroundColor: '#FFFFFF',
-    borderRadius: 5,
+    borderRadius: 4,
   },
   stopLabel: {
-    color: '#DC2626',
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
     marginTop: 6,
   },
   micBtnWrapper: {
-    width: 92,
-    height: 92,
+    width: 90,
+    height: 90,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   pttWavePulse: {
     position: 'absolute',
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
   },
   micMainBtn: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: '#634AF6',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#7C3AED',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#634AF6',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.38,
-    shadowRadius: 16,
-    elevation: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7C3AED',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.55,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
   },
   micMainBtnActive: {
-    backgroundColor: '#4F46E5',
+    backgroundColor: '#6D28D9',
+    borderColor: '#00F0FF',
     transform: [{ scale: 0.96 }],
   },
   micLockBadge: {
     position: 'absolute',
-    top: -3,
-    right: -3,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#FFFFFF',
+    top: -2,
+    right: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1E1B33',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  micLockBadgeActive: {
+    backgroundColor: '#0F262B',
+    borderColor: '#00F0FF',
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    backgroundColor: 'rgba(5, 4, 10, 0.75)',
     justifyContent: 'flex-end',
   },
   drawerCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    backgroundColor: '#110F20',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderTopWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     padding: spacing.lg,
     maxHeight: '65%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 10,
     gap: spacing.md,
   },
   drawerHeader: {
@@ -1484,7 +1609,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     paddingBottom: spacing.sm,
   },
   drawerHeaderLeft: {
@@ -1493,13 +1618,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   drawerTitle: {
-    color: '#0F172A',
-    fontSize: 17,
-    fontWeight: '700',
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   closeDrawerBtn: {
     padding: 6,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderRadius: 16,
   },
   drawerSectionLabel: {
@@ -1519,19 +1645,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#18152B',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   drawerEmoteChipActive: {
-    borderColor: '#634AF6',
-    backgroundColor: '#EDE9FE',
+    borderColor: '#00F0FF',
+    backgroundColor: 'rgba(0, 240, 255, 0.12)',
   },
   drawerEmoteText: {
-    color: '#1E293B',
+    color: '#E2E8F0',
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1542,23 +1668,23 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   drawerGestureBtn: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#18152B',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   drawerGestureText: {
-    color: '#1E293B',
+    color: '#E2E8F0',
     fontSize: 13,
     fontWeight: '700',
   },
   drawerTrickBtn: {
-    borderColor: '#634AF6',
-    backgroundColor: '#F5F3FF',
+    borderColor: 'rgba(124, 58, 237, 0.5)',
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
   },
   drawerTrickText: {
-    color: '#634AF6',
+    color: '#A78BFA',
   },
 });

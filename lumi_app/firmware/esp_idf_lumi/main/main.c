@@ -79,6 +79,9 @@ static char s_wifi_pass[64] = "";
 #define AMP_I2S_LRC_PIN     42
 #define AMP_I2S_DIN_PIN     14
 
+// Microphone Pins (I2S MEMS Mic, e.g. INMP441)
+#define MIC_I2S_SD_PIN      1
+
 // Camera Pins (GOOUUU ESP32-S3-CAM Built-In OV3660)
 #define CAM_PIN_PWDN        -1
 #define CAM_PIN_RESET       -1
@@ -312,10 +315,11 @@ static void apply_differential_drive(float x, float y) {
 }
 
 // ==============================================================================
-// 3B. SPEAKER & I2S AUDIO CONTROLLER (MAX98357A)
+// 3B. SPEAKER & MICROPHONE I2S AUDIO CONTROLLER (MAX98357A + INMP441)
 // ==============================================================================
 
 static i2s_chan_handle_t s_i2s_tx_handle = NULL;
+static i2s_chan_handle_t s_i2s_rx_handle = NULL;
 
 static void play_tone(uint32_t freq_hz, uint32_t duration_ms) {
     if (!s_i2s_tx_handle) return;
@@ -389,18 +393,19 @@ static void play_cute_hmmm_sound(void) {
     }
 }
 
-static esp_err_t init_speaker_audio(void) {
-    ESP_LOGI(TAG, "Initializing MAX98357A I2S Audio Speaker (BCLK: 41, LRC: 42, DIN: 14)...");
+static esp_err_t init_i2s_audio(void) {
+    ESP_LOGI(TAG, "Initializing Full-Duplex I2S Audio (Speaker BCLK: %d, LRC: %d, DIN: %d | Mic SD: %d)...",
+             AMP_I2S_BCLK_PIN, AMP_I2S_LRC_PIN, AMP_I2S_DIN_PIN, MIC_I2S_SD_PIN);
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.auto_clear = true;
-    esp_err_t err = i2s_new_channel(&chan_cfg, &s_i2s_tx_handle, NULL);
+    esp_err_t err = i2s_new_channel(&chan_cfg, &s_i2s_tx_handle, &s_i2s_rx_handle);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create I2S TX channel: 0x%x", err);
+        ESP_LOGE(TAG, "Failed to create I2S full-duplex channels: 0x%x", err);
         return err;
     }
 
-    i2s_std_config_t std_cfg = {
+    i2s_std_config_t tx_std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(16, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
@@ -409,17 +414,50 @@ static esp_err_t init_speaker_audio(void) {
             .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
             .dout = (gpio_num_t)AMP_I2S_DIN_PIN,
             .din  = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv   = false,
+            },
         },
     };
-    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &std_cfg);
+    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &tx_std_cfg);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to init I2S std mode: 0x%x", err);
+        ESP_LOGE(TAG, "Failed to init I2S TX std mode: 0x%x", err);
+        return err;
+    }
+
+    i2s_std_config_t rx_std_cfg = {
+        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(16, I2S_SLOT_MODE_STEREO),
+        .gpio_cfg = {
+            .mclk = I2S_GPIO_UNUSED,
+            .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
+            .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
+            .dout = I2S_GPIO_UNUSED,
+            .din  = (gpio_num_t)MIC_I2S_SD_PIN,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv   = false,
+            },
+        },
+    };
+    err = i2s_channel_init_std_mode(s_i2s_rx_handle, &rx_std_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to init I2S RX std mode: 0x%x", err);
         return err;
     }
 
     err = i2s_channel_enable(s_i2s_tx_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to enable I2S TX channel: 0x%x", err);
+        return err;
+    }
+
+    err = i2s_channel_enable(s_i2s_rx_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable I2S RX channel: 0x%x", err);
         return err;
     }
 
@@ -1300,6 +1338,68 @@ static void video_stream_task(void *pvParameters) {
     }
 }
 
+// Dedicated task for capturing room audio from INMP441 mic and streaming over LiveKit WebRTC DataChannel
+static void audio_stream_task(void *pvParameters) {
+    (void)pvParameters;
+    ESP_LOGI(TAG, "🎙️ Worldwide LiveKit WebRTC Room Audio Task started on Core 0 (16kHz 16-bit PCM)");
+
+    const int chunk_samples = 320; // 20ms at 16000Hz (640 bytes mono)
+    int16_t *raw_stereo = malloc(chunk_samples * 2 * sizeof(int16_t));
+    int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
+
+    if (!raw_stereo || !mono_out) {
+        ESP_LOGE(TAG, "Failed to allocate audio capture buffers");
+        if (raw_stereo) free(raw_stereo);
+        if (mono_out) free(mono_out);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    while (1) {
+        if (!s_i2s_rx_handle) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        size_t bytes_read = 0;
+        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int16_t), &bytes_read, pdMS_TO_TICKS(100));
+        if (err == ESP_OK && bytes_read > 0) {
+            uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+
+            // Half-duplex Acoustic Echo Cancellation (AEC):
+            // Duck microphone transmission if user is actively speaking through robot speaker
+            // or if a robot chime/inflection just played within 350ms.
+            bool ducked = s_is_user_speaking || (now_ms - s_last_speaker_play_ms < 350);
+
+            if (s_room_connected && s_room_handle && !ducked) {
+                int samples = bytes_read / (2 * sizeof(int16_t));
+                for (int i = 0; i < samples; i++) {
+                    int16_t l = raw_stereo[i * 2];
+                    int16_t r = raw_stereo[i * 2 + 1];
+                    // Pick active channel (works whether L/R pin is tied to GND or VDD)
+                    int32_t chosen = (abs(l) >= abs(r)) ? l : r;
+                    // Digital gain boost (+6dB) for clear room pickup
+                    chosen = chosen * 2;
+                    if (chosen > 32767) chosen = 32767;
+                    if (chosen < -32768) chosen = -32768;
+                    mono_out[i] = (int16_t)chosen;
+                }
+
+                livekit_data_payload_t payload = {
+                    .bytes = (uint8_t*)mono_out,
+                    .size = samples * sizeof(int16_t)
+                };
+                livekit_data_publish_options_t pub_opts = {
+                    .payload = &payload,
+                    .topic = "robot_audio",
+                    .lossy = true
+                };
+                livekit_room_publish_data(s_room_handle, &pub_opts);
+            }
+        }
+    }
+}
+
 // ==============================================================================
 // 7. MAIN APPLICATION ENTRYPOINT
 // ==============================================================================
@@ -1330,7 +1430,7 @@ void app_main(void) {
     livekit_system_init();
 
     init_camera();
-    init_speaker_audio();
+    init_i2s_audio();
     init_wifi();
 
     bool need_prov = false;
@@ -1452,6 +1552,8 @@ void app_main(void) {
         ESP_LOGI(TAG, "Robot live! Connected to LiveKit Cloud WebRTC room!");
         // Launch worldwide camera streaming task on Core 1
         xTaskCreatePinnedToCore(video_stream_task, "lk_vid_task", 8192, NULL, 5, NULL, 1);
+        // Launch worldwide robot room audio streaming task on Core 0
+        xTaskCreatePinnedToCore(audio_stream_task, "lk_mic_task", 4096, NULL, 4, NULL, 0);
     } else {
         ESP_LOGE(TAG, "Failed to create LiveKit room object, error: %d", lk_err);
     }

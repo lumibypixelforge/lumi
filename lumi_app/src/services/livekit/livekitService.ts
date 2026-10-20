@@ -45,6 +45,8 @@ const videoTrackListeners = new Set<(track: RemoteTrack | null) => void>();
 const cloudVideoListeners = new Set<(uri: string | null) => void>();
 let latestCloudVideoUri: string | null = null;
 
+const robotAudioListeners = new Set<(bytes: Uint8Array) => void>();
+
 export function getActiveRobotId(): string | null {
   return activeRobotId;
 }
@@ -109,6 +111,15 @@ export function subscribeToCloudVideoFrame(
   listener(latestCloudVideoUri);
   return () => {
     cloudVideoListeners.delete(listener);
+  };
+}
+
+export function subscribeToRobotAudio(
+  listener: (bytes: Uint8Array) => void
+): () => void {
+  robotAudioListeners.add(listener);
+  return () => {
+    robotAudioListeners.delete(listener);
   };
 }
 
@@ -355,6 +366,18 @@ export const livekitLiveService: LiveService = {
               const frameUri = `data:image/jpeg;base64,${base64}`;
               notifyCloudVideoFrame(frameUri);
             }
+            return;
+          }
+
+          // 2. Robot Room Audio Stream (topic 'robot_audio')
+          if (topic === 'robot_audio') {
+            robotAudioListeners.forEach((listener) => {
+              try {
+                listener(payload);
+              } catch (e) {
+                console.warn('[LiveKit] Error in robot audio listener:', e);
+              }
+            });
             return;
           }
 

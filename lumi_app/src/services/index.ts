@@ -35,6 +35,7 @@ export const controlChannel: ControlChannel = livekitControlChannel;
 export {
   subscribeToRobotVideoTrack,
   subscribeToCloudVideoFrame,
+  subscribeToRobotAudio,
   getRobotVideoTrack,
   setRobotMicrophone,
 } from './livekit/livekitService';
