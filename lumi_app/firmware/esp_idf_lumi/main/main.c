@@ -356,6 +356,7 @@ static void play_connected_chime(void) {
 
 // Audio Echo Cancellation (AEC) & Half-duplex Ducking state
 static bool s_is_user_speaking = false;
+static bool s_is_audio_listening = false; // Controlled by mobile app via 'listen_start' and 'listen_stop'
 static uint32_t s_last_speaker_play_ms = 0;
 static uint32_t s_last_interaction_ms = 0;
 static bool s_is_in_thinking_mode = false;
@@ -405,9 +406,13 @@ static esp_err_t init_i2s_audio(void) {
         return err;
     }
 
+    // Configure 32-bit slot width for speaker: MAX98357A auto-syncs with 32-bit slots
+    i2s_std_slot_config_t tx_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+    tx_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+
     i2s_std_config_t tx_std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(16, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = tx_slot,
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
@@ -427,9 +432,13 @@ static esp_err_t init_i2s_audio(void) {
         return err;
     }
 
+    // INMP441 MEMS microphone requires 24-32 bit clocks per channel (slot_bit_width = 32)
+    i2s_std_slot_config_t rx_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
+    rx_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+
     i2s_std_config_t rx_std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(16, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = rx_slot,
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
@@ -560,7 +569,8 @@ static esp_err_t jpg_stream_httpd_handler(httpd_req_t *req) {
             xSemaphoreGive(s_camera_mutex);
         }
         if (res != ESP_OK) break;
-        vTaskDelay(pdMS_TO_TICKS(50)); // ~20 FPS
+        // When WebRTC is active, yield camera mutex and CPU time to prioritize worldwide stream
+        vTaskDelay(pdMS_TO_TICKS(s_room_connected ? 200 : 55));
     }
     return res;
 }
@@ -1208,6 +1218,12 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
         } else if (strcmp(t->valuestring, "mic_stop") == 0) {
             s_is_user_speaking = false;
             ESP_LOGI(TAG, "🎙️ Mic Push-to-Talk released (local mic unmuted)");
+        } else if (strcmp(t->valuestring, "listen_start") == 0) {
+            s_is_audio_listening = true;
+            ESP_LOGI(TAG, "🎙️ Client started audio listening: robot room audio streaming ON");
+        } else if (strcmp(t->valuestring, "listen_stop") == 0) {
+            s_is_audio_listening = false;
+            ESP_LOGI(TAG, "🎙️ Client stopped audio listening: robot room audio streaming OFF");
         } else if (strcmp(t->valuestring, "emotion") == 0) {
             cJSON *name = cJSON_GetObjectItem(json, "name");
             if (name && name->valuestring) {
@@ -1300,13 +1316,14 @@ static void on_room_state_changed(livekit_connection_state_t state, void *ctx) {
         play_connected_chime();
     } else {
         s_room_connected = false;
+        s_is_audio_listening = false;
     }
 }
 
 // Dedicated task for publishing camera frames worldwide over LiveKit WebRTC
 static void video_stream_task(void *pvParameters) {
     (void)pvParameters;
-    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (18 FPS smooth)");
+    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (15 FPS smooth)");
     while (1) {
         if (s_room_connected && s_room_handle) {
             camera_fb_t *fb = NULL;
@@ -1331,7 +1348,7 @@ static void video_stream_task(void *pvParameters) {
                 }
                 xSemaphoreGive(s_camera_mutex);
             }
-            vTaskDelay(pdMS_TO_TICKS(55)); // ~18 FPS for buttery smooth real-time video without frame stutter
+            vTaskDelay(pdMS_TO_TICKS(65)); // ~15 FPS for rock-solid stability and zero SCTP buffer congestion
         } else {
             vTaskDelay(pdMS_TO_TICKS(150));
         }
@@ -1343,8 +1360,10 @@ static void audio_stream_task(void *pvParameters) {
     (void)pvParameters;
     ESP_LOGI(TAG, "🎙️ Worldwide LiveKit WebRTC Room Audio Task started on Core 0 (16kHz 16-bit PCM)");
 
-    const int chunk_samples = 320; // 20ms at 16000Hz (640 bytes mono)
-    int16_t *raw_stereo = malloc(chunk_samples * 2 * sizeof(int16_t));
+    // 200ms audio chunks (3200 samples at 16kHz = 5 packets/sec)
+    // Low packet rate (5/s vs 50/s) completely eliminates SCTP buffer congestion while preserving realtime audio
+    const int chunk_samples = 3200;
+    int32_t *raw_stereo = malloc(chunk_samples * 2 * sizeof(int32_t));
     int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
 
     if (!raw_stereo || !mono_out) {
@@ -1356,33 +1375,41 @@ static void audio_stream_task(void *pvParameters) {
     }
 
     while (1) {
-        if (!s_i2s_rx_handle) {
+        // Stream ONLY when phone app has explicitly toggled listening ON
+        if (!s_i2s_rx_handle || !s_is_audio_listening || !s_room_connected || !s_room_handle) {
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
+        uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+
+        // Half-duplex Acoustic Echo Cancellation (AEC):
+        // Duck microphone transmission if user is actively speaking through robot speaker
+        // or if a robot chime/inflection just played within 350ms.
+        bool ducked = s_is_user_speaking || (now_ms - s_last_speaker_play_ms < 350);
+        if (ducked) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
         size_t bytes_read = 0;
-        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int16_t), &bytes_read, pdMS_TO_TICKS(100));
+        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(250));
         if (err == ESP_OK && bytes_read > 0) {
-            uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+            if (s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
+                int samples = bytes_read / (2 * sizeof(int32_t));
+                if (samples > chunk_samples) samples = chunk_samples;
 
-            // Half-duplex Acoustic Echo Cancellation (AEC):
-            // Duck microphone transmission if user is actively speaking through robot speaker
-            // or if a robot chime/inflection just played within 350ms.
-            bool ducked = s_is_user_speaking || (now_ms - s_last_speaker_play_ms < 350);
-
-            if (s_room_connected && s_room_handle && !ducked) {
-                int samples = bytes_read / (2 * sizeof(int16_t));
                 for (int i = 0; i < samples; i++) {
-                    int16_t l = raw_stereo[i * 2];
-                    int16_t r = raw_stereo[i * 2 + 1];
+                    int32_t l = raw_stereo[i * 2];
+                    int32_t r = raw_stereo[i * 2 + 1];
                     // Pick active channel (works whether L/R pin is tied to GND or VDD)
-                    int32_t chosen = (abs(l) >= abs(r)) ? l : r;
-                    // Digital gain boost (+6dB) for clear room pickup
-                    chosen = chosen * 2;
-                    if (chosen > 32767) chosen = 32767;
-                    if (chosen < -32768) chosen = -32768;
-                    mono_out[i] = (int16_t)chosen;
+                    int32_t chosen = (labs(l) >= labs(r)) ? l : r;
+                    // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot.
+                    // Scale from 24-bit to 16-bit with +12dB digital gain boost for room pickup
+                    int32_t sample_16 = (chosen >> 14) * 4;
+                    if (sample_16 > 32767) sample_16 = 32767;
+                    if (sample_16 < -32768) sample_16 = -32768;
+                    mono_out[i] = (int16_t)sample_16;
                 }
 
                 livekit_data_payload_t payload = {

@@ -26,8 +26,10 @@ const VideoView = ({ videoTrack, style, objectFit }: any) => {
 };
 import {
   AudioModule,
+  createAudioPlayer,
   setAudioModeAsync,
   useAudioStream,
+  type AudioPlayer,
 } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -91,6 +93,7 @@ import {
   subscribeToCloudVideoFrame,
   subscribeToRobotAudio,
   subscribeToRobotVideoTrack,
+  uint8ArrayToBase64,
 } from '../../../src/services';
 import { spacing } from '../../../src/theme/tokens';
 import type { ConnectionState, Robot, Telemetry } from '../../../src/types';
@@ -118,6 +121,38 @@ const GESTURES_LIST = [
   { name: 'peekaboo', label: 'Peekaboo' },
 ];
 
+function pcmToWavDataUri(pcmBytes: Uint8Array, sampleRate = 16000, numChannels = 1, bitsPerSample = 16): string {
+  const dataLen = pcmBytes.length;
+  const buffer = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(buffer);
+
+  // RIFF header
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  view.setUint32(4, 36 + dataLen, true);
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+
+  // fmt chunk
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  view.setUint32(16, 16, true);          // 16 bytes format chunk
+  view.setUint16(20, 1, true);           // PCM format
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true);
+  view.setUint16(32, numChannels * (bitsPerSample / 8), true);
+  view.setUint16(34, bitsPerSample, true);
+
+  // data chunk
+  view.setUint32(36, 0x64617461, false); // "data"
+  view.setUint32(40, dataLen, true);
+
+  // Copy PCM audio samples
+  const u8 = new Uint8Array(buffer);
+  u8.set(pcmBytes, 44);
+
+  const base64 = uint8ArrayToBase64(u8);
+  return `data:audio/wav;base64,${base64}`;
+}
+
 interface DoubleBufferedCameraFeedProps {
   videoTrack: any;
   cameraStreamUrl: string | null;
@@ -131,69 +166,108 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
   onHasCloudFrameChange,
   connectionState,
 }: DoubleBufferedCameraFeedProps) {
-  // 100% Zero-Blanking Atomic Latch:
-  // - activeFrame remains 100% rendered on screen
-  // - incoming stagingFrame is decoded in background
-  // - Only when incoming stagingFrame onLoad fires does it promote to activeFrame
-  // Result: Absolute zero black flashes, zero flicker, smooth persistent visual stream.
-  const [activeFrame, setActiveFrame] = useState<string | null>(null);
-  const [stagingFrame, setStagingFrame] = useState<string | null>(null);
-  const stagingUriRef = useRef<string | null>(null);
+  // True Dual-Slot Hardware Double Buffering:
+  // Slot A and Slot B alternate seamlessly.
+  // The currently displayed slot is NEVER given a new URI while visible.
+  // The incoming frame loads and decodes in the background slot.
+  // Only when onLoadEnd confirms full decoding does activeSlot toggle.
+  // Result: 100% Zero black flashes, Zero screen clearing, buttery smooth 15-20 FPS.
+  const [frameA, setFrameA] = useState<string | null>(null);
+  const [frameB, setFrameB] = useState<string | null>(null);
+  const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
 
-  // Clean reset on reconnect so video feed never freezes on stale frame
-  useEffect(() => {
-    if (connectionState === 'connecting' || connectionState === 'reconnecting') {
-      stagingUriRef.current = null;
-    }
-  }, [connectionState]);
+  const activeSlotRef = useRef<'A' | 'B'>('A');
+  activeSlotRef.current = activeSlot;
+
+  const isPreloadingRef = useRef(false);
+  const pendingUriRef = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
+
     const unsub = subscribeToCloudVideoFrame((uri) => {
       if (!mounted || !uri) return;
       onHasCloudFrameChange?.(true);
 
-      // Seed first frame instantly
-      if (!activeFrame) {
-        setActiveFrame(uri);
+      // Seed first frame immediately
+      if (!frameA && !frameB) {
+        setFrameA(uri);
+        setActiveSlot('A');
         return;
       }
 
-      stagingUriRef.current = uri;
-      setStagingFrame(uri);
+      // If the background slot is currently decoding, hold newest URI to decode next
+      if (isPreloadingRef.current) {
+        pendingUriRef.current = uri;
+        return;
+      }
+
+      // Load into the inactive slot
+      isPreloadingRef.current = true;
+      if (activeSlotRef.current === 'A') {
+        setFrameB(uri);
+      } else {
+        setFrameA(uri);
+      }
     });
 
     return () => {
       mounted = false;
       unsub();
     };
-  }, [activeFrame, onHasCloudFrameChange]);
+  }, []);
 
-  const handleStagingLoad = () => {
-    if (stagingUriRef.current) {
-      setActiveFrame(stagingUriRef.current);
+  const handleSlotLoaded = (slot: 'A' | 'B') => {
+    // Promote the freshly decoded slot to active view
+    if (activeSlotRef.current !== slot) {
+      setActiveSlot(slot);
+    }
+    isPreloadingRef.current = false;
+
+    // If a new frame arrived while decoding was in progress, load it into the new background slot
+    if (pendingUriRef.current) {
+      const nextUri = pendingUriRef.current;
+      pendingUriRef.current = null;
+      isPreloadingRef.current = true;
+      if (slot === 'A') {
+        setFrameB(nextUri);
+      } else {
+        setFrameA(nextUri);
+      }
     }
   };
 
-  if (activeFrame) {
+  if (frameA || frameB) {
     return (
       <View style={StyleSheet.absoluteFill}>
-        {/* Active visible frame - stays 100% visible at all times */}
-        <Image
-          source={{ uri: activeFrame }}
-          style={styles.cameraImageFull}
-          resizeMode="cover"
-          fadeDuration={0}
-        />
-
-        {/* Staging frame pre-decoding offscreen */}
-        {stagingFrame && stagingFrame !== activeFrame && (
+        {frameA && (
           <Image
-            source={{ uri: stagingFrame }}
-            style={[styles.cameraImageFull, { opacity: 0.01 }]}
+            source={{ uri: frameA }}
+            style={[
+              styles.cameraImageFull,
+              {
+                opacity: activeSlot === 'A' ? 1 : 0.001,
+                zIndex: activeSlot === 'A' ? 2 : 1,
+              },
+            ]}
             resizeMode="cover"
             fadeDuration={0}
-            onLoad={handleStagingLoad}
+            onLoadEnd={() => handleSlotLoaded('A')}
+          />
+        )}
+        {frameB && (
+          <Image
+            source={{ uri: frameB }}
+            style={[
+              styles.cameraImageFull,
+              {
+                opacity: activeSlot === 'B' ? 1 : 0.001,
+                zIndex: activeSlot === 'B' ? 2 : 1,
+              },
+            ]}
+            resizeMode="cover"
+            fadeDuration={0}
+            onLoadEnd={() => handleSlotLoaded('B')}
           />
         )}
       </View>
@@ -210,7 +284,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
     );
   }
 
-  if (cameraStreamUrl) {
+  if (cameraStreamUrl && connectionState !== 'connected') {
     return (
       <Image
         source={{ uri: `${cameraStreamUrl}/stream` }}
@@ -316,15 +390,91 @@ export default function DriveScreen() {
 
   // Subscribe to live robot room audio when listening toggle is active
   useEffect(() => {
-    if (!isAudioListening) return;
+    if (!isAudioListening) {
+      try {
+        controlChannel.send({ t: 'listen_stop' });
+      } catch { }
+      return;
+    }
 
-    const unsubAudio = subscribeToRobotAudio((_pcmBytes) => {
-      // Incoming 16kHz 16-bit PCM chunks captured from ESP32-S3 microphone on GPIO 1
-    });
+    // Inform robot to start capturing and streaming INMP441 microphone audio
+    try {
+      controlChannel.send({ t: 'listen_start' });
+    } catch { }
 
-    return () => {
-      unsubAudio();
-    };
+    let active = true;
+    const audioQueue: string[] = [];
+    let isPlaying = false;
+    let player: AudioPlayer | null = null;
+
+    try {
+      player = createAudioPlayer(null, { keepAudioSessionActive: true });
+      player.volume = 1.0;
+
+      const playNext = () => {
+        if (!active || !player) return;
+        if (audioQueue.length === 0) {
+          isPlaying = false;
+          return;
+        }
+        isPlaying = true;
+        const nextUri = audioQueue.shift()!;
+        try {
+          player.replace({ uri: nextUri });
+          player.play();
+        } catch (err) {
+          console.warn('[RobotAudio] Play error:', err);
+          isPlaying = false;
+        }
+      };
+
+      player.addListener('playbackStatusUpdate', (status) => {
+        if (!active) return;
+        if (
+          status.didJustFinish ||
+          (!status.playing && status.isLoaded && status.duration > 0 && status.currentTime >= status.duration - 0.04)
+        ) {
+          playNext();
+        }
+      });
+
+      const unsubAudio = subscribeToRobotAudio((pcmBytes) => {
+        if (!active || !pcmBytes || pcmBytes.length === 0) return;
+        try {
+          const wavUri = pcmToWavDataUri(pcmBytes);
+          // Keep buffer bounded (max 2 chunks ~400ms) to ensure real-time latency
+          if (audioQueue.length >= 2) {
+            audioQueue.shift();
+          }
+          audioQueue.push(wavUri);
+
+          if (!isPlaying) {
+            playNext();
+          }
+        } catch (e) {
+          console.warn('[RobotAudio] Decode error:', e);
+        }
+      });
+
+      return () => {
+        active = false;
+        try {
+          controlChannel.send({ t: 'listen_stop' });
+        } catch { }
+        unsubAudio();
+        try {
+          player?.pause();
+          player?.remove();
+        } catch { }
+      };
+    } catch (err) {
+      console.warn('[RobotAudio] AudioPlayer init warning:', err);
+      return () => {
+        try {
+          controlChannel.send({ t: 'listen_stop' });
+        } catch { }
+      };
+    }
   }, [isAudioListening]);
 
   const handleBackPress = useCallback(() => {

@@ -17,6 +17,8 @@ extern "C" {
 #define OLED_WIDTH          128
 #define OLED_HEIGHT         64
 #define OLED_I2C_ADDR       0x3C
+// Column offset: 2 for SH1106 displays (132x64 RAM), 0 for native SSD1306
+#define OLED_COLUMN_OFFSET  2
 
 /**
  * Initialize I2C and SSD1306 OLED display.

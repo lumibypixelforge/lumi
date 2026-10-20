@@ -57,6 +57,8 @@ export type ControlMessage =
   | { t: 'volume'; value: number }
   | { t: 'mic_start' }
   | { t: 'mic_stop' }
+  | { t: 'listen_start' }
+  | { t: 'listen_stop' }
   | { t: 'voice'; data: string }
   | { t: 'wifi_config'; ssid: string; pass: string };
 

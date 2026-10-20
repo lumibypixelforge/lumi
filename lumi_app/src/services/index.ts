@@ -36,6 +36,7 @@ export {
   subscribeToRobotVideoTrack,
   subscribeToCloudVideoFrame,
   subscribeToRobotAudio,
+  uint8ArrayToBase64,
   getRobotVideoTrack,
   setRobotMicrophone,
 } from './livekit/livekitService';

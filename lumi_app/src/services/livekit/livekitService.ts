@@ -52,7 +52,7 @@ export function getActiveRobotId(): string | null {
 }
 
 const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-function uint8ArrayToBase64(bytes: Uint8Array): string {
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
   let result = '';
   const len = bytes.byteLength;
   let i = 0;

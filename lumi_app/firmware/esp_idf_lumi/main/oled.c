@@ -165,10 +165,13 @@ static esp_err_t ssd1306_render(void) {
     if (!s_oled_ready || !s_oled_dev) return ESP_FAIL;
 
     // Send full 1024-byte framebuffer in 8 pages (128 bytes each)
+    // For SH1106 OLEDs (132x64 RAM), column offset is 2 so pixels 0..127 align with RAM 2..129.
+    // This completely eliminates the weird 2-pixel noisy vertical line on the edge!
+    uint8_t col_offset = OLED_COLUMN_OFFSET;
     for (uint8_t page = 0; page < 8; page++) {
-        ssd1306_write_cmd(0xB0 + page); // Set page start address
-        ssd1306_write_cmd(0x00);        // Set lower column address
-        ssd1306_write_cmd(0x10);        // Set higher column address
+        ssd1306_write_cmd(0xB0 + page);                          // Set page start address
+        ssd1306_write_cmd(0x00 | (col_offset & 0x0F));            // Set lower column address
+        ssd1306_write_cmd(0x10 | ((col_offset >> 4) & 0x0F));     // Set higher column address
 
         uint8_t page_buf[129];
         page_buf[0] = 0x40; // Control byte: Data
@@ -699,15 +702,15 @@ esp_err_t oled_init(void) {
         return err;
     }
 
-    // SSD1306 Initialization sequence
+    // SSD1306 / SH1106 Initialization sequence
     const uint8_t init_cmds[] = {
         0xAE,       // Display OFF
         0xD5, 0x80, // Set Display Clock Divide
         0xA8, 0x3F, // Set Multiplex Ratio (64 lines)
         0xD3, 0x00, // Display Offset = 0
         0x40,       // Start Line = 0
-        0x8D, 0x14, // Charge Pump Enable
-        0x20, 0x00, // Horizontal Addressing Mode
+        0x8D, 0x14, // Charge Pump Enable (SSD1306)
+        0x20, 0x02, // Page Addressing Mode (compatible with both SSD1306 and SH1106)
         0xA1,       // Segment Re-map (Col 127 mapped to SEG0)
         0xC8,       // COM Output Scan Direction
         0xDA, 0x12, // COM Pins Hardware Config
@@ -724,6 +727,17 @@ esp_err_t oled_init(void) {
         if (cmd_err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to send init cmd 0x%02X: %s", init_cmds[i], esp_err_to_name(cmd_err));
         }
+    }
+
+    // Zero out all 132 columns across 8 pages to eliminate uninitialized RAM noise / side lines on SH1106
+    for (uint8_t p = 0; p < 8; p++) {
+        ssd1306_write_cmd(0xB0 + p);
+        ssd1306_write_cmd(0x00);
+        ssd1306_write_cmd(0x10);
+        uint8_t zero_page[133];
+        zero_page[0] = 0x40; // Data control byte
+        memset(&zero_page[1], 0, 132);
+        i2c_master_transmit(s_oled_dev, zero_page, sizeof(zero_page), 150);
     }
 
     // Initialize default procedural eye geometry
