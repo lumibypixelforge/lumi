@@ -355,6 +355,7 @@ static void play_connected_chime(void) {
 }
 
 // Audio Echo Cancellation (AEC) & Half-duplex Ducking state
+static bool s_room_connected = false;
 static bool s_is_user_speaking = false;
 static bool s_is_audio_listening = false; // Controlled by mobile app via 'listen_start' and 'listen_stop'
 static uint32_t s_last_speaker_play_ms = 0;
@@ -1302,7 +1303,6 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
     cJSON_Delete(json);
 }
 
-static bool s_room_connected = false;
 static livekit_room_handle_t s_room_handle = NULL;
 static char s_livekit_url[128] = {0};
 static char s_livekit_token[512] = {0};
