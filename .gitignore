@@ -32,5 +32,8 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
-*.swp
-*.swo
+# AI Agent
+.agents/
+.agent/
+.claude/
+.gemini/
