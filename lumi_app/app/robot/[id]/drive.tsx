@@ -31,6 +31,7 @@ import {
   useAudioStream,
   type AudioPlayer,
 } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -121,7 +122,7 @@ const GESTURES_LIST = [
   { name: 'peekaboo', label: 'Peekaboo' },
 ];
 
-function pcmToWavDataUri(pcmBytes: Uint8Array, sampleRate = 16000, numChannels = 1, bitsPerSample = 16): string {
+function pcmToWavBase64(pcmBytes: Uint8Array, sampleRate = 16000, numChannels = 1, bitsPerSample = 16): string {
   const dataLen = pcmBytes.length;
   const buffer = new ArrayBuffer(44 + dataLen);
   const view = new DataView(buffer);
@@ -149,8 +150,7 @@ function pcmToWavDataUri(pcmBytes: Uint8Array, sampleRate = 16000, numChannels =
   const u8 = new Uint8Array(buffer);
   u8.set(pcmBytes, 44);
 
-  const base64 = uint8ArrayToBase64(u8);
-  return `data:audio/wav;base64,${base64}`;
+  return uint8ArrayToBase64(u8);
 }
 
 interface DoubleBufferedCameraFeedProps {
@@ -170,8 +170,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
   // Slot A and Slot B alternate seamlessly.
   // The currently displayed slot is NEVER given a new URI while visible.
   // The incoming frame loads and decodes in the background slot.
-  // Only when onLoadEnd confirms full decoding does activeSlot toggle.
-  // Result: 100% Zero black flashes, Zero screen clearing, buttery smooth 15-20 FPS.
+  // Both onLoadEnd and onError trigger promotion/recovery, preventing any freeze.
   const [frameA, setFrameA] = useState<string | null>(null);
   const [frameB, setFrameB] = useState<string | null>(null);
   const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
@@ -181,6 +180,34 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
 
   const isPreloadingRef = useRef(false);
   const pendingUriRef = useRef<string | null>(null);
+  const preloadWatchdogRef = useRef<any>(null);
+
+  const handleSlotLoaded = useCallback((slot: 'A' | 'B') => {
+    if (preloadWatchdogRef.current) {
+      clearTimeout(preloadWatchdogRef.current);
+      preloadWatchdogRef.current = null;
+    }
+    // Promote the freshly decoded slot to active view
+    if (activeSlotRef.current !== slot) {
+      setActiveSlot(slot);
+    }
+    isPreloadingRef.current = false;
+
+    // If a new frame arrived while decoding was in progress, load it into the new background slot
+    if (pendingUriRef.current) {
+      const nextUri = pendingUriRef.current;
+      pendingUriRef.current = null;
+      isPreloadingRef.current = true;
+      if (slot === 'A') {
+        setFrameB(nextUri);
+      } else {
+        setFrameA(nextUri);
+      }
+      preloadWatchdogRef.current = setTimeout(() => {
+        isPreloadingRef.current = false;
+      }, 350);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -209,33 +236,19 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
       } else {
         setFrameA(uri);
       }
+
+      if (preloadWatchdogRef.current) clearTimeout(preloadWatchdogRef.current);
+      preloadWatchdogRef.current = setTimeout(() => {
+        isPreloadingRef.current = false;
+      }, 350);
     });
 
     return () => {
       mounted = false;
+      if (preloadWatchdogRef.current) clearTimeout(preloadWatchdogRef.current);
       unsub();
     };
-  }, []);
-
-  const handleSlotLoaded = (slot: 'A' | 'B') => {
-    // Promote the freshly decoded slot to active view
-    if (activeSlotRef.current !== slot) {
-      setActiveSlot(slot);
-    }
-    isPreloadingRef.current = false;
-
-    // If a new frame arrived while decoding was in progress, load it into the new background slot
-    if (pendingUriRef.current) {
-      const nextUri = pendingUriRef.current;
-      pendingUriRef.current = null;
-      isPreloadingRef.current = true;
-      if (slot === 'A') {
-        setFrameB(nextUri);
-      } else {
-        setFrameA(nextUri);
-      }
-    }
-  };
+  }, [frameA, frameB, onHasCloudFrameChange]);
 
   if (frameA || frameB) {
     return (
@@ -253,6 +266,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
             resizeMode="cover"
             fadeDuration={0}
             onLoadEnd={() => handleSlotLoaded('A')}
+            onError={() => handleSlotLoaded('A')}
           />
         )}
         {frameB && (
@@ -268,6 +282,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
             resizeMode="cover"
             fadeDuration={0}
             onLoadEnd={() => handleSlotLoaded('B')}
+            onError={() => handleSlotLoaded('B')}
           />
         )}
       </View>
@@ -403,16 +418,22 @@ export default function DriveScreen() {
     } catch { }
 
     let active = true;
+    let slot = 0;
     const audioQueue: string[] = [];
     let isPlaying = false;
     let player: AudioPlayer | null = null;
+    let fallbackTimer: any = null;
 
     try {
-      player = createAudioPlayer(null, { keepAudioSessionActive: true });
+      player = createAudioPlayer(null, { keepAudioSessionActive: true, updateInterval: 50 });
       player.volume = 1.0;
 
       const playNext = () => {
         if (!active || !player) return;
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
         if (audioQueue.length === 0) {
           isPlaying = false;
           return;
@@ -422,6 +443,12 @@ export default function DriveScreen() {
         try {
           player.replace({ uri: nextUri });
           player.play();
+          // Fallback watchdog: if Android media status lags or drops finish event, advance smoothly
+          fallbackTimer = setTimeout(() => {
+            if (active && isPlaying) {
+              playNext();
+            }
+          }, 450);
         } catch (err) {
           console.warn('[RobotAudio] Play error:', err);
           isPlaying = false;
@@ -432,32 +459,42 @@ export default function DriveScreen() {
         if (!active) return;
         if (
           status.didJustFinish ||
+          status.error ||
           (!status.playing && status.isLoaded && status.duration > 0 && status.currentTime >= status.duration - 0.04)
         ) {
           playNext();
         }
       });
 
-      const unsubAudio = subscribeToRobotAudio((pcmBytes) => {
+      const unsubAudio = subscribeToRobotAudio(async (pcmBytes) => {
         if (!active || !pcmBytes || pcmBytes.length === 0) return;
         try {
-          const wavUri = pcmToWavDataUri(pcmBytes);
-          // Keep buffer bounded (max 2 chunks ~400ms) to ensure real-time latency
+          const base64Wav = pcmToWavBase64(pcmBytes);
+          const cacheDir = FileSystem.cacheDirectory || '';
+          const filePath = `${cacheDir}lumi_audio_${slot}.wav`;
+          slot = (slot + 1) % 2;
+
+          await FileSystem.writeAsStringAsync(filePath, base64Wav, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
+          // Bound queue to max 2 chunks (~600ms) to ensure low-latency real-time listening
           if (audioQueue.length >= 2) {
             audioQueue.shift();
           }
-          audioQueue.push(wavUri);
+          audioQueue.push(filePath);
 
           if (!isPlaying) {
             playNext();
           }
         } catch (e) {
-          console.warn('[RobotAudio] Decode error:', e);
+          console.warn('[RobotAudio] Cache/playback error:', e);
         }
       });
 
       return () => {
         active = false;
+        if (fallbackTimer) clearTimeout(fallbackTimer);
         try {
           controlChannel.send({ t: 'listen_stop' });
         } catch { }

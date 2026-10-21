@@ -324,18 +324,18 @@ static i2s_chan_handle_t s_i2s_rx_handle = NULL;
 static void play_tone(uint32_t freq_hz, uint32_t duration_ms) {
     if (!s_i2s_tx_handle) return;
     int samples_count = (16000 * duration_ms) / 1000;
-    int16_t *buf = malloc(samples_count * 2 * sizeof(int16_t));
+    int32_t *buf = malloc(samples_count * 2 * sizeof(int32_t));
     if (!buf) return;
 
     for (int i = 0; i < samples_count; i++) {
         float sample = sinf(2.0f * (float)M_PI * (float)freq_hz * ((float)i / 16000.0f));
-        int16_t val = (int16_t)(sample * 10000.0f);
+        int32_t val = ((int32_t)(sample * 10000.0f)) << 16;
         buf[i * 2]     = val; // Left
         buf[i * 2 + 1] = val; // Right
     }
 
     size_t written = 0;
-    i2s_channel_write(s_i2s_tx_handle, buf, samples_count * 2 * sizeof(int16_t), &written, pdMS_TO_TICKS(duration_ms + 100));
+    i2s_channel_write(s_i2s_tx_handle, buf, samples_count * 2 * sizeof(int32_t), &written, pdMS_TO_TICKS(duration_ms + 100));
     free(buf);
 }
 
@@ -369,7 +369,7 @@ static void play_cute_hmmm_sound(void) {
 
     // Vocal sweep: soft glide 310Hz -> 280Hz -> 430Hz over 450ms with smooth sine envelope
     const int step_samples = 160; // 10ms at 16kHz
-    int16_t step_buf[step_samples * 2];
+    int32_t step_buf[step_samples * 2];
     float phase = 0.0f;
 
     for (int step = 0; step < 45; step++) {
@@ -386,7 +386,7 @@ static void play_cute_hmmm_sound(void) {
         for (int i = 0; i < step_samples; i++) {
             phase += 2.0f * (float)M_PI * freq / 16000.0f;
             if (phase > 2.0f * (float)M_PI) phase -= 2.0f * (float)M_PI;
-            int16_t sample = (int16_t)(sinf(phase) * vol);
+            int32_t sample = ((int32_t)(sinf(phase) * vol)) << 16;
             step_buf[i * 2]     = sample;
             step_buf[i * 2 + 1] = sample;
         }
@@ -408,7 +408,7 @@ static esp_err_t init_i2s_audio(void) {
     }
 
     // Configure 32-bit slot width for speaker: MAX98357A auto-syncs with 32-bit slots
-    i2s_std_slot_config_t tx_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+    i2s_std_slot_config_t tx_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
     tx_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
 
     i2s_std_config_t tx_std_cfg = {
@@ -499,12 +499,12 @@ static esp_err_t init_camera(void) {
         .pin_vsync = CAM_PIN_VSYNC,
         .pin_href = CAM_PIN_HREF,
         .pin_pclk = CAM_PIN_PCLK,
-        .xclk_freq_hz = 10000000,
+        .xclk_freq_hz = 20000000, // 20 MHz: OV3660 standard PLL clock, guarantees bit synchronization and eliminates NO-SOI misses
         .ledc_timer = LEDC_TIMER_3,
         .ledc_channel = LEDC_CHANNEL_7,
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_QVGA, // 320x240 for smooth, ultra-low latency worldwide streaming
-        .jpeg_quality = 22, // Optimized for smooth streaming without choking 2.4GHz Wi-Fi or SCTP buffers
+        .jpeg_quality = 24, // Optimized for smooth streaming without choking 2.4GHz Wi-Fi or SCTP buffers (~7-9KB/frame)
         .fb_count = 2,
         .grab_mode = CAMERA_GRAB_LATEST,
         .fb_location = CAMERA_FB_IN_PSRAM
@@ -546,6 +546,12 @@ static esp_err_t jpg_stream_httpd_handler(httpd_req_t *req) {
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
     while (true) {
+        // When WebRTC is connected, yield completely so local HTTP stream doesn't contend for camera mutex or DMA
+        if (s_room_connected) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+
         if (s_camera_mutex && xSemaphoreTake(s_camera_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             fb = esp_camera_fb_get();
             if (!fb) {
@@ -570,8 +576,7 @@ static esp_err_t jpg_stream_httpd_handler(httpd_req_t *req) {
             xSemaphoreGive(s_camera_mutex);
         }
         if (res != ESP_OK) break;
-        // When WebRTC is active, yield camera mutex and CPU time to prioritize worldwide stream
-        vTaskDelay(pdMS_TO_TICKS(s_room_connected ? 200 : 55));
+        vTaskDelay(pdMS_TO_TICKS(55));
     }
     return res;
 }
@@ -1113,22 +1118,22 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
 
         if (s_i2s_tx_handle && data->payload.size > 0) {
             // Incoming phone stream is 16-bit 16kHz mono PCM.
-            // Duplicate mono into stereo (Left + Right) for MAX98357A I2S DAC with digital gain boost.
+            // Duplicate mono into stereo 32-bit (Left + Right) for MAX98357A I2S DAC with digital gain boost.
             size_t mono_samples = data->payload.size / sizeof(int16_t);
             if (mono_samples > 0) {
-                int16_t *stereo_buf = malloc(mono_samples * 2 * sizeof(int16_t));
+                int32_t *stereo_buf = malloc(mono_samples * 2 * sizeof(int32_t));
                 if (stereo_buf) {
                     const int16_t *mono_ptr = (const int16_t *)data->payload.bytes;
                     for (size_t i = 0; i < mono_samples; i++) {
                         int32_t boosted = (int32_t)mono_ptr[i] * 2; // +6dB gain boost for walkie-talkie projection
                         if (boosted > 32767) boosted = 32767;
                         if (boosted < -32768) boosted = -32768;
-                        int16_t sample = (int16_t)boosted;
+                        int32_t sample = boosted << 16;
                         stereo_buf[i * 2]     = sample;
                         stereo_buf[i * 2 + 1] = sample;
                     }
                     size_t written = 0;
-                    i2s_channel_write(s_i2s_tx_handle, stereo_buf, mono_samples * 2 * sizeof(int16_t), &written, pdMS_TO_TICKS(100));
+                    i2s_channel_write(s_i2s_tx_handle, stereo_buf, mono_samples * 2 * sizeof(int32_t), &written, pdMS_TO_TICKS(100));
                     free(stereo_buf);
                 }
             }
@@ -1145,18 +1150,18 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
             if (s_i2s_tx_handle) {
                 size_t mono_samples = data->payload.size / sizeof(int16_t);
                 if (mono_samples > 0) {
-                    int16_t *stereo_buf = malloc(mono_samples * 2 * sizeof(int16_t));
+                    int32_t *stereo_buf = malloc(mono_samples * 2 * sizeof(int32_t));
                     if (stereo_buf) {
                         const int16_t *mono_ptr = (const int16_t *)data->payload.bytes;
                         for (size_t i = 0; i < mono_samples; i++) {
                             int32_t boosted = (int32_t)mono_ptr[i] * 2;
                             if (boosted > 32767) boosted = 32767;
                             if (boosted < -32768) boosted = -32768;
-                            stereo_buf[i * 2]     = (int16_t)boosted;
-                            stereo_buf[i * 2 + 1] = (int16_t)boosted;
+                            stereo_buf[i * 2]     = boosted << 16;
+                            stereo_buf[i * 2 + 1] = boosted << 16;
                         }
                         size_t written = 0;
-                        i2s_channel_write(s_i2s_tx_handle, stereo_buf, mono_samples * 2 * sizeof(int16_t), &written, pdMS_TO_TICKS(100));
+                        i2s_channel_write(s_i2s_tx_handle, stereo_buf, mono_samples * 2 * sizeof(int32_t), &written, pdMS_TO_TICKS(100));
                         free(stereo_buf);
                     }
                 }
@@ -1257,15 +1262,16 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
                         size_t pcm_len = out_len > offset ? out_len - offset : 0;
                         if (pcm_len > 0) {
                             size_t mono_samples = pcm_len / sizeof(int16_t);
-                            int16_t *stereo_buf = malloc(mono_samples * 2 * sizeof(int16_t));
+                            int32_t *stereo_buf = malloc(mono_samples * 2 * sizeof(int32_t));
                             if (stereo_buf) {
                                 const int16_t *mono_ptr = (const int16_t *)(out_buf + offset);
                                 for (size_t i = 0; i < mono_samples; i++) {
-                                    stereo_buf[i * 2]     = mono_ptr[i];
-                                    stereo_buf[i * 2 + 1] = mono_ptr[i];
+                                    int32_t sample = ((int32_t)mono_ptr[i]) << 16;
+                                    stereo_buf[i * 2]     = sample;
+                                    stereo_buf[i * 2 + 1] = sample;
                                 }
                                 size_t written = 0;
-                                i2s_channel_write(s_i2s_tx_handle, stereo_buf, mono_samples * 2 * sizeof(int16_t), &written, pdMS_TO_TICKS(200));
+                                i2s_channel_write(s_i2s_tx_handle, stereo_buf, mono_samples * 2 * sizeof(int32_t), &written, pdMS_TO_TICKS(200));
                                 free(stereo_buf);
                             }
                         }
@@ -1323,7 +1329,7 @@ static void on_room_state_changed(livekit_connection_state_t state, void *ctx) {
 // Dedicated task for publishing camera frames worldwide over LiveKit WebRTC
 static void video_stream_task(void *pvParameters) {
     (void)pvParameters;
-    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (15 FPS smooth)");
+    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (12.5 FPS smooth)");
     while (1) {
         if (s_room_connected && s_room_handle) {
             camera_fb_t *fb = NULL;
@@ -1343,12 +1349,12 @@ static void video_stream_task(void *pvParameters) {
                     esp_camera_fb_return(fb);
                     if (res != LIVEKIT_ERR_NONE) {
                         // SCTP send queue is temporarily full, yield slightly to let it drain cleanly
-                        vTaskDelay(pdMS_TO_TICKS(75));
+                        vTaskDelay(pdMS_TO_TICKS(80));
                     }
                 }
                 xSemaphoreGive(s_camera_mutex);
             }
-            vTaskDelay(pdMS_TO_TICKS(65)); // ~15 FPS for rock-solid stability and zero SCTP buffer congestion
+            vTaskDelay(pdMS_TO_TICKS(80)); // ~12.5 FPS for rock-solid stability and zero SCTP buffer congestion
         } else {
             vTaskDelay(pdMS_TO_TICKS(150));
         }
@@ -1360,9 +1366,9 @@ static void audio_stream_task(void *pvParameters) {
     (void)pvParameters;
     ESP_LOGI(TAG, "🎙️ Worldwide LiveKit WebRTC Room Audio Task started on Core 0 (16kHz 16-bit PCM)");
 
-    // 200ms audio chunks (3200 samples at 16kHz = 5 packets/sec)
-    // Low packet rate (5/s vs 50/s) completely eliminates SCTP buffer congestion while preserving realtime audio
-    const int chunk_samples = 3200;
+    // 300ms audio chunks (4800 samples at 16kHz = ~3.3 packets/sec)
+    // Low packet rate completely eliminates SCTP buffer congestion while preserving realtime audio
+    const int chunk_samples = 4800;
     int32_t *raw_stereo = malloc(chunk_samples * 2 * sizeof(int32_t));
     int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
 
@@ -1393,20 +1399,22 @@ static void audio_stream_task(void *pvParameters) {
         }
 
         size_t bytes_read = 0;
-        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(250));
+        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(350));
         if (err == ESP_OK && bytes_read > 0) {
             if (s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
                 int samples = bytes_read / (2 * sizeof(int32_t));
                 if (samples > chunk_samples) samples = chunk_samples;
 
                 for (int i = 0; i < samples; i++) {
-                    int32_t l = raw_stereo[i * 2];
-                    int32_t r = raw_stereo[i * 2 + 1];
-                    // Pick active channel (works whether L/R pin is tied to GND or VDD)
-                    int32_t chosen = (labs(l) >= labs(r)) ? l : r;
-                    // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot.
-                    // Scale from 24-bit to 16-bit with +12dB digital gain boost for room pickup
-                    int32_t sample_16 = (chosen >> 14) * 4;
+                    // LUMI_Connection_Table.pdf: Mic L/R is tied to GND (Left channel).
+                    int32_t sample_32 = raw_stereo[i * 2];
+                    // Fallback to Right channel if Left has zero activity
+                    if (labs(sample_32) < 50 && labs(raw_stereo[i * 2 + 1]) > 200) {
+                        sample_32 = raw_stereo[i * 2 + 1];
+                    }
+                    // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot (bits 31..8).
+                    // Shift >> 14 for clean +12dB digital gain boost for room pickup without clipping.
+                    int32_t sample_16 = sample_32 >> 14;
                     if (sample_16 > 32767) sample_16 = 32767;
                     if (sample_16 < -32768) sample_16 = -32768;
                     mono_out[i] = (int16_t)sample_16;
