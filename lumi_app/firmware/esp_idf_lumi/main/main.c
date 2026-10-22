@@ -425,8 +425,13 @@ static esp_err_t init_i2s_audio(void) {
     ESP_LOGI(TAG, "Initializing Full-Duplex I2S Audio (Speaker BCLK: %d, LRC: %d, DIN: %d | Mic SD: %d)...",
              AMP_I2S_BCLK_PIN, AMP_I2S_LRC_PIN, AMP_I2S_DIN_PIN, MIC_I2S_SD_PIN);
 
+    // Set internal pull-down on microphone SD pin so tri-state phase stays clean digital 0
+    gpio_set_pull_mode((gpio_num_t)MIC_I2S_SD_PIN, GPIO_PULLDOWN_ONLY);
+
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.auto_clear = true;
+    chan_cfg.dma_desc_num = 8;
+    chan_cfg.dma_frame_num = 320;
     esp_err_t err = i2s_new_channel(&chan_cfg, &s_i2s_tx_handle, &s_i2s_rx_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create I2S full-duplex channels: 0x%x", err);
@@ -1233,11 +1238,6 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
             ESP_LOGI(TAG, "🎙️ Mic Push-to-Talk released (local mic unmuted)");
         } else if (strcmp(t->valuestring, "listen_start") == 0) {
             s_is_audio_listening = true;
-            if (s_i2s_tx_handle) {
-                static const int32_t s_prime_silence[256] = {0};
-                size_t written = 0;
-                i2s_channel_write(s_i2s_tx_handle, s_prime_silence, sizeof(s_prime_silence), &written, pdMS_TO_TICKS(20));
-            }
             ESP_LOGI(TAG, "🎙️ Client started audio listening: robot room audio streaming ON");
         } else if (strcmp(t->valuestring, "listen_stop") == 0) {
             s_is_audio_listening = false;
@@ -1397,21 +1397,29 @@ static void audio_stream_task(void *pvParameters) {
     // 40ms audio chunks (640 samples at 16kHz = 25 packets/sec, 1280 bytes mono)
     // Comfortably fits inside DMA ring buffer, eliminating timeouts while providing smooth, real-time room audio
     const int chunk_samples = 640;
-    int32_t *raw_stereo = malloc(chunk_samples * 2 * sizeof(int32_t));
+    const size_t raw_stereo_bytes = chunk_samples * 2 * sizeof(int32_t); // 5120 bytes
+    int32_t *raw_stereo = malloc(raw_stereo_bytes);
     int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
+    int32_t *silence_tx = calloc(chunk_samples * 2, sizeof(int32_t));
 
-    if (!raw_stereo || !mono_out) {
+    if (!raw_stereo || !mono_out || !silence_tx) {
         ESP_LOGE(TAG, "Failed to allocate audio capture buffers");
         if (raw_stereo) free(raw_stereo);
         if (mono_out) free(mono_out);
+        if (silence_tx) free(silence_tx);
         vTaskDelete(NULL);
         return;
     }
 
+    bool was_listening = false;
+
     while (1) {
         // Stream ONLY when phone app has explicitly toggled listening ON
         if (!s_i2s_rx_handle || !s_is_audio_listening || !s_room_connected || !s_room_handle) {
-            vTaskDelay(pdMS_TO_TICKS(100));
+            if (was_listening) {
+                was_listening = false;
+            }
+            vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
 
@@ -1422,25 +1430,32 @@ static void audio_stream_task(void *pvParameters) {
         // or if a robot chime/inflection just played within 350ms.
         bool ducked = s_is_user_speaking || (now_ms - s_last_speaker_play_ms < 350);
         if (ducked) {
-            vTaskDelay(pdMS_TO_TICKS(50));
+            vTaskDelay(pdMS_TO_TICKS(40));
             continue;
         }
 
-        // Keep shared I2S master clock (GPIO 41 BCLK, GPIO 42 WS) pulsing continuously
-        // by pushing silence to TX whenever the speaker is idle.
+        // Just started listening? Drain any stale DMA queue frames accumulated from idle period
+        if (!was_listening) {
+            was_listening = true;
+            size_t drain_bytes = 0;
+            // Drain with 0 timeout to flush old buffer contents
+            i2s_channel_read(s_i2s_rx_handle, raw_stereo, raw_stereo_bytes, &drain_bytes, 0);
+        }
+
+        // To generate continuous BCLK & WS clock pulses for INMP441 in Full-Duplex master mode,
+        // feed a matching block of silence (40ms) to TX whenever speaker is not actively playing audio.
         if (s_i2s_tx_handle && !s_is_user_speaking && (now_ms - s_last_speaker_play_ms > 350)) {
-            static const int32_t s_silence_keepalive[128] = {0};
             size_t written = 0;
-            i2s_channel_write(s_i2s_tx_handle, s_silence_keepalive, sizeof(s_silence_keepalive), &written, 0);
+            i2s_channel_write(s_i2s_tx_handle, silence_tx, raw_stereo_bytes, &written, pdMS_TO_TICKS(60));
         }
 
         size_t bytes_read = 0;
-        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(100));
-        if (err != ESP_OK) {
+        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, raw_stereo_bytes, &bytes_read, pdMS_TO_TICKS(80));
+        if (err != ESP_OK && bytes_read == 0) {
             static uint32_t s_last_err_log_ms = 0;
             if (now_ms - s_last_err_log_ms > 3000) {
                 s_last_err_log_ms = now_ms;
-                ESP_LOGW(TAG, "⚠️ I2S RX read timeout/error: 0x%x (bytes_read=%d)", err, (int)bytes_read);
+                ESP_LOGW(TAG, "⚠️ I2S RX read timeout/error: 0x%x (bytes_read=0)", err);
             }
             continue;
         }
@@ -1449,15 +1464,23 @@ static void audio_stream_task(void *pvParameters) {
             int samples = bytes_read / (2 * sizeof(int32_t));
             if (samples > chunk_samples) samples = chunk_samples;
 
+            // Measure channel energies to determine active microphone channel (Left vs Right)
+            int64_t energy_l = 0;
+            int64_t energy_r = 0;
+            for (int i = 0; i < samples; i++) {
+                int32_t l = raw_stereo[i * 2] >> 14;
+                int32_t r = raw_stereo[i * 2 + 1] >> 14;
+                energy_l += (int64_t)l * l;
+                energy_r += (int64_t)r * r;
+            }
+            bool use_left = (energy_l >= energy_r);
+
             int32_t peak = 0;
             for (int i = 0; i < samples; i++) {
-                int32_t l = raw_stereo[i * 2];
-                int32_t r = raw_stereo[i * 2 + 1];
-                // Dynamic channel selection: pick active mic channel (works if L/R is tied to GND or VDD)
-                int32_t sample_32 = (labs(l) >= labs(r)) ? l : r;
+                int32_t sample_32 = use_left ? raw_stereo[i * 2] : raw_stereo[i * 2 + 1];
 
                 // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot (bits 31..8).
-                // Shift >> 14 for clean +12dB digital gain boost for room pickup without clipping.
+                // Shift >> 14 provides clean +12dB digital gain boost for room pickup without clipping.
                 int32_t sample_16 = sample_32 >> 14;
                 if (sample_16 > 32767) sample_16 = 32767;
                 if (sample_16 < -32768) sample_16 = -32768;
@@ -1468,7 +1491,8 @@ static void audio_stream_task(void *pvParameters) {
             static uint32_t s_last_mic_log_ms = 0;
             if (now_ms - s_last_mic_log_ms > 2000) {
                 s_last_mic_log_ms = now_ms;
-                ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples)", (long)peak, (int)samples);
+                ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples, ch=%s)",
+                         (long)peak, (int)samples, use_left ? "L" : "R");
             }
 
             livekit_data_payload_t payload = {
@@ -1646,7 +1670,7 @@ void app_main(void) {
         // Launch worldwide camera streaming task on Core 1
         xTaskCreatePinnedToCore(video_stream_task, "lk_vid_task", 8192, NULL, 5, NULL, 1);
         // Launch worldwide robot room audio streaming task on Core 0
-        xTaskCreatePinnedToCore(audio_stream_task, "lk_mic_task", 4096, NULL, 4, NULL, 0);
+        xTaskCreatePinnedToCore(audio_stream_task, "lk_mic_task", 5120, NULL, 4, NULL, 0);
     } else {
         ESP_LOGE(TAG, "Failed to create LiveKit room object, error: %d", lk_err);
     }
