@@ -17,6 +17,7 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 #include "esp_system.h"
+#include "esp_mac.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -1351,7 +1352,7 @@ static livekit_err_t safe_livekit_publish(const livekit_data_publish_options_t *
         xSemaphoreGive(s_livekit_pub_mutex);
         return err;
     }
-    return LIVEKIT_ERR_TIMEOUT;
+    return LIVEKIT_ERR_OTHER;
 }
 
 static void on_room_state_changed(livekit_connection_state_t state, void *ctx) {
@@ -1622,6 +1623,9 @@ void app_main(void) {
     ESP_LOGI(TAG, "Connecting to LiveKit Room at %s...", s_livekit_url);
 
     // 3. Connect LiveKit Room & WebRTC Data Channel
+    if (!s_livekit_pub_mutex) {
+        s_livekit_pub_mutex = xSemaphoreCreateMutex();
+    }
     s_room_handle = NULL;
     livekit_room_options_t room_options = {
         .publish = {
