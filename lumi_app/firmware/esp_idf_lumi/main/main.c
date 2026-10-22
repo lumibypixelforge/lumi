@@ -433,44 +433,18 @@ static esp_err_t init_i2s_audio(void) {
         return err;
     }
 
-    // Configure 32-bit slot width for speaker: MAX98357A auto-syncs with 32-bit slots
-    i2s_std_slot_config_t tx_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
-    tx_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+    // Configure unified 32-bit slot width for full-duplex (MAX98357A auto-syncs, INMP441 requires 32-bit slot)
+    i2s_std_slot_config_t std_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
+    std_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
 
-    i2s_std_config_t tx_std_cfg = {
+    i2s_std_config_t std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-        .slot_cfg = tx_slot,
+        .slot_cfg = std_slot,
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
             .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
             .dout = (gpio_num_t)AMP_I2S_DIN_PIN,
-            .din  = I2S_GPIO_UNUSED,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv   = false,
-            },
-        },
-    };
-    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &tx_std_cfg);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to init I2S TX std mode: 0x%x", err);
-        return err;
-    }
-
-    // INMP441 MEMS microphone requires 24-32 bit clocks per channel (slot_bit_width = 32)
-    i2s_std_slot_config_t rx_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
-    rx_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
-
-    i2s_std_config_t rx_std_cfg = {
-        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-        .slot_cfg = rx_slot,
-        .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
-            .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
-            .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
-            .dout = I2S_GPIO_UNUSED,
             .din  = (gpio_num_t)MIC_I2S_SD_PIN,
             .invert_flags = {
                 .mclk_inv = false,
@@ -479,7 +453,14 @@ static esp_err_t init_i2s_audio(void) {
             },
         },
     };
-    err = i2s_channel_init_std_mode(s_i2s_rx_handle, &rx_std_cfg);
+
+    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &std_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to init I2S TX std mode: 0x%x", err);
+        return err;
+    }
+
+    err = i2s_channel_init_std_mode(s_i2s_rx_handle, &std_cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to init I2S RX std mode: 0x%x", err);
         return err;
@@ -1252,6 +1233,11 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
             ESP_LOGI(TAG, "🎙️ Mic Push-to-Talk released (local mic unmuted)");
         } else if (strcmp(t->valuestring, "listen_start") == 0) {
             s_is_audio_listening = true;
+            if (s_i2s_tx_handle) {
+                static const int32_t s_prime_silence[256] = {0};
+                size_t written = 0;
+                i2s_channel_write(s_i2s_tx_handle, s_prime_silence, sizeof(s_prime_silence), &written, pdMS_TO_TICKS(20));
+            }
             ESP_LOGI(TAG, "🎙️ Client started audio listening: robot room audio streaming ON");
         } else if (strcmp(t->valuestring, "listen_stop") == 0) {
             s_is_audio_listening = false;
@@ -1408,9 +1394,9 @@ static void audio_stream_task(void *pvParameters) {
     (void)pvParameters;
     ESP_LOGI(TAG, "🎙️ Worldwide LiveKit WebRTC Room Audio Task started on Core 0 (16kHz 16-bit PCM)");
 
-    // 100ms audio chunks (1600 samples at 16kHz = 10 packets/sec, 3200 bytes)
-    // Low packet payload completely eliminates SCTP buffer congestion while preserving realtime audio
-    const int chunk_samples = 1600;
+    // 40ms audio chunks (640 samples at 16kHz = 25 packets/sec, 1280 bytes mono)
+    // Comfortably fits inside DMA ring buffer, eliminating timeouts while providing smooth, real-time room audio
+    const int chunk_samples = 640;
     int32_t *raw_stereo = malloc(chunk_samples * 2 * sizeof(int32_t));
     int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
 
@@ -1440,46 +1426,61 @@ static void audio_stream_task(void *pvParameters) {
             continue;
         }
 
+        // Keep shared I2S master clock (GPIO 41 BCLK, GPIO 42 WS) pulsing continuously
+        // by pushing silence to TX whenever the speaker is idle.
+        if (s_i2s_tx_handle && !s_is_user_speaking && (now_ms - s_last_speaker_play_ms > 350)) {
+            static const int32_t s_silence_keepalive[128] = {0};
+            size_t written = 0;
+            i2s_channel_write(s_i2s_tx_handle, s_silence_keepalive, sizeof(s_silence_keepalive), &written, 0);
+        }
+
         size_t bytes_read = 0;
-        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(150));
-        if (err == ESP_OK && bytes_read > 0) {
-            if (s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
-                int samples = bytes_read / (2 * sizeof(int32_t));
-                if (samples > chunk_samples) samples = chunk_samples;
-
-                int32_t peak = 0;
-                for (int i = 0; i < samples; i++) {
-                    int32_t l = raw_stereo[i * 2];
-                    int32_t r = raw_stereo[i * 2 + 1];
-                    // Dynamic channel selection: pick active mic channel (works if L/R is tied to GND or VDD)
-                    int32_t sample_32 = (labs(l) >= labs(r)) ? l : r;
-
-                    // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot (bits 31..8).
-                    // Shift >> 14 for clean +12dB digital gain boost for room pickup without clipping.
-                    int32_t sample_16 = sample_32 >> 14;
-                    if (sample_16 > 32767) sample_16 = 32767;
-                    if (sample_16 < -32768) sample_16 = -32768;
-                    mono_out[i] = (int16_t)sample_16;
-                    if (labs(sample_16) > peak) peak = labs(sample_16);
-                }
-
-                static uint32_t s_last_mic_log_ms = 0;
-                if (now_ms - s_last_mic_log_ms > 3000) {
-                    s_last_mic_log_ms = now_ms;
-                    ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples)", (long)peak, samples);
-                }
-
-                livekit_data_payload_t payload = {
-                    .bytes = (uint8_t*)mono_out,
-                    .size = samples * sizeof(int16_t)
-                };
-                livekit_data_publish_options_t pub_opts = {
-                    .payload = &payload,
-                    .topic = "robot_audio",
-                    .lossy = true
-                };
-                safe_livekit_publish(&pub_opts);
+        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(100));
+        if (err != ESP_OK) {
+            static uint32_t s_last_err_log_ms = 0;
+            if (now_ms - s_last_err_log_ms > 3000) {
+                s_last_err_log_ms = now_ms;
+                ESP_LOGW(TAG, "⚠️ I2S RX read timeout/error: 0x%x (bytes_read=%d)", err, (int)bytes_read);
             }
+            continue;
+        }
+
+        if (bytes_read > 0 && s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
+            int samples = bytes_read / (2 * sizeof(int32_t));
+            if (samples > chunk_samples) samples = chunk_samples;
+
+            int32_t peak = 0;
+            for (int i = 0; i < samples; i++) {
+                int32_t l = raw_stereo[i * 2];
+                int32_t r = raw_stereo[i * 2 + 1];
+                // Dynamic channel selection: pick active mic channel (works if L/R is tied to GND or VDD)
+                int32_t sample_32 = (labs(l) >= labs(r)) ? l : r;
+
+                // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot (bits 31..8).
+                // Shift >> 14 for clean +12dB digital gain boost for room pickup without clipping.
+                int32_t sample_16 = sample_32 >> 14;
+                if (sample_16 > 32767) sample_16 = 32767;
+                if (sample_16 < -32768) sample_16 = -32768;
+                mono_out[i] = (int16_t)sample_16;
+                if (labs(sample_16) > peak) peak = labs(sample_16);
+            }
+
+            static uint32_t s_last_mic_log_ms = 0;
+            if (now_ms - s_last_mic_log_ms > 2000) {
+                s_last_mic_log_ms = now_ms;
+                ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples)", (long)peak, (int)samples);
+            }
+
+            livekit_data_payload_t payload = {
+                .bytes = (uint8_t*)mono_out,
+                .size = samples * sizeof(int16_t)
+            };
+            livekit_data_publish_options_t pub_opts = {
+                .payload = &payload,
+                .topic = "robot_audio",
+                .lossy = true
+            };
+            safe_livekit_publish(&pub_opts);
         }
     }
 }
