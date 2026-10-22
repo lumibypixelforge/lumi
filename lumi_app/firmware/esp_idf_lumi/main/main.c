@@ -421,12 +421,24 @@ static void play_cute_hmmm_sound(void) {
     }
 }
 
+static void tx_keepalive_task(void *pvParameters) {
+    (void)pvParameters;
+    static const int32_t s_silence[320 * 2] = {0}; // 20ms block
+    while (1) {
+        uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        // Only feed silence when speaker is NOT playing chimes or user voice
+        if (s_i2s_tx_handle && !s_is_user_speaking && (now_ms - s_last_speaker_play_ms > 350)) {
+            size_t written = 0;
+            i2s_channel_write(s_i2s_tx_handle, s_silence, sizeof(s_silence), &written, pdMS_TO_TICKS(40));
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+    }
+}
+
 static esp_err_t init_i2s_audio(void) {
     ESP_LOGI(TAG, "Initializing Full-Duplex I2S Audio (Speaker BCLK: %d, LRC: %d, DIN: %d | Mic SD: %d)...",
              AMP_I2S_BCLK_PIN, AMP_I2S_LRC_PIN, AMP_I2S_DIN_PIN, MIC_I2S_SD_PIN);
-
-    // Set internal pull-down on microphone SD pin so tri-state phase stays clean digital 0
-    gpio_set_pull_mode((gpio_num_t)MIC_I2S_SD_PIN, GPIO_PULLDOWN_ONLY);
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.auto_clear = true;
@@ -442,7 +454,8 @@ static esp_err_t init_i2s_audio(void) {
     i2s_std_slot_config_t std_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
     std_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
 
-    i2s_std_config_t std_cfg = {
+    // Separate GPIO configs for TX and RX so drivers do not contend for opposite directions
+    i2s_std_config_t tx_std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
         .slot_cfg = std_slot,
         .gpio_cfg = {
@@ -450,6 +463,23 @@ static esp_err_t init_i2s_audio(void) {
             .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
             .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
             .dout = (gpio_num_t)AMP_I2S_DIN_PIN,
+            .din  = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv   = false,
+            },
+        },
+    };
+
+    i2s_std_config_t rx_std_cfg = {
+        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
+        .slot_cfg = std_slot,
+        .gpio_cfg = {
+            .mclk = I2S_GPIO_UNUSED,
+            .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
+            .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
+            .dout = I2S_GPIO_UNUSED,
             .din  = (gpio_num_t)MIC_I2S_SD_PIN,
             .invert_flags = {
                 .mclk_inv = false,
@@ -459,13 +489,13 @@ static esp_err_t init_i2s_audio(void) {
         },
     };
 
-    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &std_cfg);
+    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &tx_std_cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to init I2S TX std mode: 0x%x", err);
         return err;
     }
 
-    err = i2s_channel_init_std_mode(s_i2s_rx_handle, &std_cfg);
+    err = i2s_channel_init_std_mode(s_i2s_rx_handle, &rx_std_cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to init I2S RX std mode: 0x%x", err);
         return err;
@@ -482,6 +512,9 @@ static esp_err_t init_i2s_audio(void) {
         ESP_LOGE(TAG, "Failed to enable I2S RX channel: 0x%x", err);
         return err;
     }
+
+    // Launch continuous background silence feeder so master clocks BCLK & WS never starve
+    xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 3, NULL, 0);
 
     // Play pleasant greeting chime so client verifies speaker hardware on boot
     play_robot_greeting_chime();
@@ -1358,6 +1391,7 @@ static void on_room_state_changed(livekit_connection_state_t state, void *ctx) {
 static void video_stream_task(void *pvParameters) {
     (void)pvParameters;
     ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (12.5 FPS smooth)");
+    int consecutive_fails = 0;
     while (1) {
         if (s_room_connected && s_room_handle) {
             camera_fb_t *fb = NULL;
@@ -1376,13 +1410,21 @@ static void video_stream_task(void *pvParameters) {
                     livekit_err_t res = safe_livekit_publish(&pub_opts);
                     esp_camera_fb_return(fb);
                     if (res != LIVEKIT_ERR_NONE) {
-                        // SCTP send queue is temporarily full, yield slightly to let it drain cleanly
-                        vTaskDelay(pdMS_TO_TICKS(80));
+                        consecutive_fails++;
+                        // If data channel is congested (e.g. phone disconnected or reconnecting),
+                        // back off progressively to allow the SCTP socket buffer to flush and recover cleanly!
+                        if (consecutive_fails > 3) {
+                            vTaskDelay(pdMS_TO_TICKS(350));
+                        } else {
+                            vTaskDelay(pdMS_TO_TICKS(120));
+                        }
+                    } else {
+                        consecutive_fails = 0;
                     }
                 }
                 xSemaphoreGive(s_camera_mutex);
             }
-            vTaskDelay(pdMS_TO_TICKS(80)); // ~12.5 FPS for rock-solid stability and zero SCTP buffer congestion
+            vTaskDelay(pdMS_TO_TICKS(80)); // ~12.5 FPS for smooth video
         } else {
             vTaskDelay(pdMS_TO_TICKS(150));
         }
@@ -1395,30 +1437,24 @@ static void audio_stream_task(void *pvParameters) {
     ESP_LOGI(TAG, "🎙️ Worldwide LiveKit WebRTC Room Audio Task started on Core 0 (16kHz 16-bit PCM)");
 
     // 40ms audio chunks (640 samples at 16kHz = 25 packets/sec, 1280 bytes mono)
-    // Comfortably fits inside DMA ring buffer, eliminating timeouts while providing smooth, real-time room audio
     const int chunk_samples = 640;
     const size_t raw_stereo_bytes = chunk_samples * 2 * sizeof(int32_t); // 5120 bytes
     int32_t *raw_stereo = malloc(raw_stereo_bytes);
     int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
-    int32_t *silence_tx = calloc(chunk_samples * 2, sizeof(int32_t));
 
-    if (!raw_stereo || !mono_out || !silence_tx) {
+    if (!raw_stereo || !mono_out) {
         ESP_LOGE(TAG, "Failed to allocate audio capture buffers");
         if (raw_stereo) free(raw_stereo);
         if (mono_out) free(mono_out);
-        if (silence_tx) free(silence_tx);
         vTaskDelete(NULL);
         return;
     }
 
-    bool was_listening = false;
+    uint32_t silent_packet_count = 0;
 
     while (1) {
         // Stream ONLY when phone app has explicitly toggled listening ON
         if (!s_i2s_rx_handle || !s_is_audio_listening || !s_room_connected || !s_room_handle) {
-            if (was_listening) {
-                was_listening = false;
-            }
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
@@ -1434,29 +1470,11 @@ static void audio_stream_task(void *pvParameters) {
             continue;
         }
 
-        // Just started listening? Drain any stale DMA queue frames accumulated from idle period
-        if (!was_listening) {
-            was_listening = true;
-            size_t drain_bytes = 0;
-            // Drain with 0 timeout to flush old buffer contents
-            i2s_channel_read(s_i2s_rx_handle, raw_stereo, raw_stereo_bytes, &drain_bytes, 0);
-        }
-
-        // To generate continuous BCLK & WS clock pulses for INMP441 in Full-Duplex master mode,
-        // feed a matching block of silence (40ms) to TX whenever speaker is not actively playing audio.
-        if (s_i2s_tx_handle && !s_is_user_speaking && (now_ms - s_last_speaker_play_ms > 350)) {
-            size_t written = 0;
-            i2s_channel_write(s_i2s_tx_handle, silence_tx, raw_stereo_bytes, &written, pdMS_TO_TICKS(60));
-        }
-
         size_t bytes_read = 0;
-        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, raw_stereo_bytes, &bytes_read, pdMS_TO_TICKS(80));
+        // BCLK and WS are continuously driven by tx_keepalive_task, so reading runs smoothly
+        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, raw_stereo_bytes, &bytes_read, pdMS_TO_TICKS(100));
         if (err != ESP_OK && bytes_read == 0) {
-            static uint32_t s_last_err_log_ms = 0;
-            if (now_ms - s_last_err_log_ms > 3000) {
-                s_last_err_log_ms = now_ms;
-                ESP_LOGW(TAG, "⚠️ I2S RX read timeout/error: 0x%x (bytes_read=0)", err);
-            }
+            vTaskDelay(pdMS_TO_TICKS(15));
             continue;
         }
 
@@ -1491,8 +1509,20 @@ static void audio_stream_task(void *pvParameters) {
             static uint32_t s_last_mic_log_ms = 0;
             if (now_ms - s_last_mic_log_ms > 2000) {
                 s_last_mic_log_ms = now_ms;
-                ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples, ch=%s)",
-                         (long)peak, (int)samples, use_left ? "L" : "R");
+                ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples, ch=%s, raw0=0x%08lx)",
+                         (long)peak, (int)samples, use_left ? "L" : "R", (unsigned long)raw_stereo[0]);
+            }
+
+            // Silence suppression / VAD:
+            // When sound/speech is active (peak > 50), stream continuously at full rate (25 packets/sec).
+            // When completely quiet (peak <= 50), throttle to 2 keepalive packets/sec to prevent SCTP congestion!
+            if (peak > 50) {
+                silent_packet_count = 0;
+            } else {
+                silent_packet_count++;
+                if (silent_packet_count % 12 != 0) {
+                    continue; // Conserve bandwidth for video stream during silence
+                }
             }
 
             livekit_data_payload_t payload = {
