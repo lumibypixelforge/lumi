@@ -178,6 +178,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
   const activeSlotRef = useRef<'A' | 'B'>('A');
   activeSlotRef.current = activeSlot;
 
+  const hasSeededRef = useRef(false);
   const isPreloadingRef = useRef(false);
   const pendingUriRef = useRef<string | null>(null);
   const preloadWatchdogRef = useRef<any>(null);
@@ -190,22 +191,24 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
     // Promote the freshly decoded slot to active view
     if (activeSlotRef.current !== slot) {
       setActiveSlot(slot);
+      activeSlotRef.current = slot;
     }
     isPreloadingRef.current = false;
 
-    // If a new frame arrived while decoding was in progress, load it into the new background slot
+    // If a new frame arrived while decoding was in progress, load it into the background slot
     if (pendingUriRef.current) {
       const nextUri = pendingUriRef.current;
       pendingUriRef.current = null;
       isPreloadingRef.current = true;
-      if (slot === 'A') {
+      const targetSlot = slot === 'A' ? 'B' : 'A';
+      if (targetSlot === 'B') {
         setFrameB(nextUri);
       } else {
         setFrameA(nextUri);
       }
       preloadWatchdogRef.current = setTimeout(() => {
-        isPreloadingRef.current = false;
-      }, 350);
+        handleSlotLoaded(targetSlot);
+      }, 150);
     }
   }, []);
 
@@ -217,9 +220,11 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
       onHasCloudFrameChange?.(true);
 
       // Seed first frame immediately
-      if (!frameA && !frameB) {
+      if (!hasSeededRef.current) {
+        hasSeededRef.current = true;
         setFrameA(uri);
         setActiveSlot('A');
+        activeSlotRef.current = 'A';
         return;
       }
 
@@ -231,7 +236,8 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
 
       // Load into the inactive slot
       isPreloadingRef.current = true;
-      if (activeSlotRef.current === 'A') {
+      const targetSlot = activeSlotRef.current === 'A' ? 'B' : 'A';
+      if (targetSlot === 'B') {
         setFrameB(uri);
       } else {
         setFrameA(uri);
@@ -239,8 +245,11 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
 
       if (preloadWatchdogRef.current) clearTimeout(preloadWatchdogRef.current);
       preloadWatchdogRef.current = setTimeout(() => {
-        isPreloadingRef.current = false;
-      }, 350);
+        // Watchdog: If Android dropped onLoadEnd, forcefully promote target slot and drain queue
+        if (mounted) {
+          handleSlotLoaded(targetSlot);
+        }
+      }, 150);
     });
 
     return () => {
@@ -248,7 +257,7 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
       if (preloadWatchdogRef.current) clearTimeout(preloadWatchdogRef.current);
       unsub();
     };
-  }, [frameA, frameB, onHasCloudFrameChange]);
+  }, [onHasCloudFrameChange, handleSlotLoaded]);
 
   if (frameA || frameB) {
     return (
@@ -419,6 +428,7 @@ export default function DriveScreen() {
 
     let active = true;
     let slot = 0;
+    const NUM_AUDIO_SLOTS = 6;
     const audioQueue: string[] = [];
     let isPlaying = false;
     let player: AudioPlayer | null = null;
@@ -443,12 +453,12 @@ export default function DriveScreen() {
         try {
           player.replace({ uri: nextUri });
           player.play();
-          // Fallback watchdog: if Android media status lags or drops finish event, advance smoothly
+          // Fallback watchdog: if Android media status lags or drops finish event, advance smoothly after 160ms
           fallbackTimer = setTimeout(() => {
             if (active && isPlaying) {
               playNext();
             }
-          }, 450);
+          }, 160);
         } catch (err) {
           console.warn('[RobotAudio] Play error:', err);
           isPlaying = false;
@@ -472,14 +482,14 @@ export default function DriveScreen() {
           const base64Wav = pcmToWavBase64(pcmBytes);
           const cacheDir = FileSystem.cacheDirectory || '';
           const filePath = `${cacheDir}lumi_audio_${slot}.wav`;
-          slot = (slot + 1) % 2;
+          slot = (slot + 1) % NUM_AUDIO_SLOTS;
 
           await FileSystem.writeAsStringAsync(filePath, base64Wav, {
             encoding: FileSystem.EncodingType.Base64,
           });
 
-          // Bound queue to max 2 chunks (~600ms) to ensure low-latency real-time listening
-          if (audioQueue.length >= 2) {
+          // Bound queue to max 3 chunks (~300ms) to ensure low-latency real-time listening
+          if (audioQueue.length >= 3) {
             audioQueue.shift();
           }
           audioQueue.push(filePath);

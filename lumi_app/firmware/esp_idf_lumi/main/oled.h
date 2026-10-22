@@ -41,6 +41,11 @@ void oled_show_pairing_screen(const char *code);
 void oled_show_wifi_setup_screen(const char *ap_ssid);
 
 /**
+ * Display the Wi-Fi connecting screen while establishing connection.
+ */
+void oled_show_connecting_wifi(const char *ssid);
+
+/**
  * Render eyes by mood and gaze direction.
  * mood: 0=Happy, 1=Neutral, 2=Sleep, 3=Angry, 4=Upset, 5=Sad, 6=Love
  * lookDir: 0=Center, 1=Left, 2=Right

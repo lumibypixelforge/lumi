@@ -54,8 +54,33 @@ static char s_wifi_ssid[64] = "";
 static char s_wifi_pass[64] = "";
 
 #define SUPABASE_BASE_URL   "https://ehqqlxcdscgsebiodxfk.supabase.co"
-#define LUMI_ID             "LUMI-001"
 #define DEVICE_SECRET       "x8K2mP9vL4qR7tW1zY5bN3cF6hJ0sD"
+
+static char s_lumi_id[32] = "LUMI-001";
+static char s_ap_ssid[32] = "LUMI-Setup";
+
+static void init_lumi_id(void) {
+    // 1. Check if custom ID is saved in NVS (for factory override / custom name)
+    nvs_handle_t nvs_handle;
+    if (nvs_open("lumi_cfg", NVS_READONLY, &nvs_handle) == ESP_OK) {
+        size_t len = sizeof(s_lumi_id);
+        if (nvs_get_str(nvs_handle, "lumi_id", s_lumi_id, &len) == ESP_OK && strlen(s_lumi_id) > 0) {
+            nvs_close(nvs_handle);
+            snprintf(s_ap_ssid, sizeof(s_ap_ssid), "LUMI-Setup-%.8s", s_lumi_id + (strncmp(s_lumi_id, "LUMI-", 5) == 0 ? 5 : 0));
+            ESP_LOGI(TAG, "🤖 LUMI ID from NVS: [%s], AP SSID: [%s]", s_lumi_id, s_ap_ssid);
+            return;
+        }
+        nvs_close(nvs_handle);
+    }
+
+    // 2. Generate unique hardware ID from ESP32 Base MAC (e.g. LUMI-A842)
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    snprintf(s_lumi_id, sizeof(s_lumi_id), "LUMI-%02X%02X", mac[4], mac[5]);
+    snprintf(s_ap_ssid, sizeof(s_ap_ssid), "LUMI-Setup-%02X%02X", mac[4], mac[5]);
+    ESP_LOGI(TAG, "🤖 Unique Hardware LUMI ID: [%s], AP Hotspot: [%s] (MAC: %02X:%02X:%02X:%02X:%02X:%02X)",
+             s_lumi_id, s_ap_ssid, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
 
 // ==============================================================================
 // 2. HARDWARE PINS (From LUMI_Connection_Table.pdf)
@@ -833,20 +858,20 @@ static esp_err_t prov_connect_handler(httpd_req_t *req) {
 
     save_wifi_credentials_nvs(new_ssid, new_pass);
 
+    // Provide immediate visual feedback on the OLED screen!
+    oled_show_connecting_wifi(new_ssid);
+
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, "{\"status\":\"ok\",\"message\":\"Connecting to Wi-Fi...\"}", HTTPD_RESP_USE_STRLEN);
     cJSON_Delete(json);
 
-    // Apply to station and trigger connect
-    wifi_config_t sta_conf = {0};
-    strncpy((char *)sta_conf.sta.ssid, new_ssid, sizeof(sta_conf.sta.ssid) - 1);
-    strncpy((char *)sta_conf.sta.password, new_pass, sizeof(sta_conf.sta.password) - 1);
-
-    ESP_LOGI(TAG, "📡 SoftAP: Switching to user network [%s]...", new_ssid);
-    esp_wifi_disconnect();
-    esp_wifi_set_config(WIFI_IF_STA, &sta_conf);
-    esp_wifi_connect();
+    // Yield 800ms for HTTP response to transmit over SoftAP, then reboot into pure STA mode.
+    // Clean reboot eliminates SoftAP channel 1 RF contention and memory fragmentation,
+    // seamlessly connecting to Wi-Fi and transitioning OLED to pairing/eyes without manual button press!
+    ESP_LOGI(TAG, "📡 SoftAP: Saved credentials for [%s]. Rebooting in 800ms to connect cleanly...", new_ssid);
+    vTaskDelay(pdMS_TO_TICKS(800));
+    esp_restart();
 
     return ESP_OK;
 }
@@ -1050,14 +1075,14 @@ static void init_wifi(void) {
 
     wifi_config_t wifi_ap_config = {
         .ap = {
-            .ssid = "LUMI-Setup",
-            .ssid_len = strlen("LUMI-Setup"),
             .channel = 1,
             .password = "",
             .max_connection = 4,
             .authmode = WIFI_AUTH_OPEN
         },
     };
+    strncpy((char *)wifi_ap_config.ap.ssid, s_ap_ssid, sizeof(wifi_ap_config.ap.ssid) - 1);
+    wifi_ap_config.ap.ssid_len = strlen(s_ap_ssid);
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
@@ -1312,6 +1337,22 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
 static livekit_room_handle_t s_room_handle = NULL;
 static char s_livekit_url[128] = {0};
 static char s_livekit_token[512] = {0};
+static SemaphoreHandle_t s_livekit_pub_mutex = NULL;
+
+static livekit_err_t safe_livekit_publish(const livekit_data_publish_options_t *opts) {
+    if (!s_room_connected || !s_room_handle || !opts) {
+        return LIVEKIT_ERR_INVALID_STATE;
+    }
+    if (!s_livekit_pub_mutex) {
+        return livekit_room_publish_data(s_room_handle, opts);
+    }
+    if (xSemaphoreTake(s_livekit_pub_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        livekit_err_t err = livekit_room_publish_data(s_room_handle, opts);
+        xSemaphoreGive(s_livekit_pub_mutex);
+        return err;
+    }
+    return LIVEKIT_ERR_TIMEOUT;
+}
 
 static void on_room_state_changed(livekit_connection_state_t state, void *ctx) {
     ESP_LOGI(TAG, "LiveKit Room state changed: %s", livekit_connection_state_str(state));
@@ -1345,7 +1386,7 @@ static void video_stream_task(void *pvParameters) {
                         .topic = "video",
                         .lossy = true
                     };
-                    livekit_err_t res = livekit_room_publish_data(s_room_handle, &pub_opts);
+                    livekit_err_t res = safe_livekit_publish(&pub_opts);
                     esp_camera_fb_return(fb);
                     if (res != LIVEKIT_ERR_NONE) {
                         // SCTP send queue is temporarily full, yield slightly to let it drain cleanly
@@ -1366,9 +1407,9 @@ static void audio_stream_task(void *pvParameters) {
     (void)pvParameters;
     ESP_LOGI(TAG, "🎙️ Worldwide LiveKit WebRTC Room Audio Task started on Core 0 (16kHz 16-bit PCM)");
 
-    // 300ms audio chunks (4800 samples at 16kHz = ~3.3 packets/sec)
-    // Low packet rate completely eliminates SCTP buffer congestion while preserving realtime audio
-    const int chunk_samples = 4800;
+    // 100ms audio chunks (1600 samples at 16kHz = 10 packets/sec, 3200 bytes)
+    // Low packet payload completely eliminates SCTP buffer congestion while preserving realtime audio
+    const int chunk_samples = 1600;
     int32_t *raw_stereo = malloc(chunk_samples * 2 * sizeof(int32_t));
     int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
 
@@ -1399,25 +1440,32 @@ static void audio_stream_task(void *pvParameters) {
         }
 
         size_t bytes_read = 0;
-        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(350));
+        esp_err_t err = i2s_channel_read(s_i2s_rx_handle, raw_stereo, chunk_samples * 2 * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(150));
         if (err == ESP_OK && bytes_read > 0) {
             if (s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
                 int samples = bytes_read / (2 * sizeof(int32_t));
                 if (samples > chunk_samples) samples = chunk_samples;
 
+                int32_t peak = 0;
                 for (int i = 0; i < samples; i++) {
-                    // LUMI_Connection_Table.pdf: Mic L/R is tied to GND (Left channel).
-                    int32_t sample_32 = raw_stereo[i * 2];
-                    // Fallback to Right channel if Left has zero activity
-                    if (labs(sample_32) < 50 && labs(raw_stereo[i * 2 + 1]) > 200) {
-                        sample_32 = raw_stereo[i * 2 + 1];
-                    }
+                    int32_t l = raw_stereo[i * 2];
+                    int32_t r = raw_stereo[i * 2 + 1];
+                    // Dynamic channel selection: pick active mic channel (works if L/R is tied to GND or VDD)
+                    int32_t sample_32 = (labs(l) >= labs(r)) ? l : r;
+
                     // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot (bits 31..8).
                     // Shift >> 14 for clean +12dB digital gain boost for room pickup without clipping.
                     int32_t sample_16 = sample_32 >> 14;
                     if (sample_16 > 32767) sample_16 = 32767;
                     if (sample_16 < -32768) sample_16 = -32768;
                     mono_out[i] = (int16_t)sample_16;
+                    if (labs(sample_16) > peak) peak = labs(sample_16);
+                }
+
+                static uint32_t s_last_mic_log_ms = 0;
+                if (now_ms - s_last_mic_log_ms > 3000) {
+                    s_last_mic_log_ms = now_ms;
+                    ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples)", (long)peak, samples);
                 }
 
                 livekit_data_payload_t payload = {
@@ -1429,7 +1477,7 @@ static void audio_stream_task(void *pvParameters) {
                     .topic = "robot_audio",
                     .lossy = true
                 };
-                livekit_room_publish_data(s_room_handle, &pub_opts);
+                safe_livekit_publish(&pub_opts);
             }
         }
     }
@@ -1451,7 +1499,11 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
 
+    // Initialize unique hardware robot identifier and AP hotspot name
+    init_lumi_id();
+
     s_camera_mutex = xSemaphoreCreateMutex();
+    s_livekit_pub_mutex = xSemaphoreCreateMutex();
 
     // Initialize OLED Screen immediately so user gets instant visual feedback
     oled_init();
@@ -1474,6 +1526,7 @@ void app_main(void) {
         need_prov = true;
     } else {
         ESP_LOGI(TAG, "Attempting connection to saved Wi-Fi [%s] (timeout: 12s)...", s_wifi_ssid);
+        oled_show_connecting_wifi(s_wifi_ssid);
         EventBits_t conn_bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, false, true, pdMS_TO_TICKS(12000));
         if ((conn_bits & WIFI_CONNECTED_BIT) == 0) {
             ESP_LOGW(TAG, "❌ Could not connect to saved Wi-Fi [%s] within 12s", s_wifi_ssid);
@@ -1483,12 +1536,12 @@ void app_main(void) {
 
     if (need_prov) {
         ESP_LOGW(TAG, "================================================");
-        ESP_LOGW(TAG, "📡 LAUNCHING LUMI WI-FI SETUP HOTSPOT: [LUMI-Setup]");
-        ESP_LOGW(TAG, "👉 1. Connect phone Wi-Fi to 'LUMI-Setup'");
+        ESP_LOGW(TAG, "📡 LAUNCHING LUMI WI-FI SETUP HOTSPOT: [%s]", s_ap_ssid);
+        ESP_LOGW(TAG, "👉 1. Connect phone Wi-Fi to '%s'", s_ap_ssid);
         ESP_LOGW(TAG, "👉 2. Open browser: http://192.168.4.1");
         ESP_LOGW(TAG, "================================================");
 
-        oled_show_wifi_setup_screen("LUMI-Setup");
+        oled_show_wifi_setup_screen(s_ap_ssid);
         start_wifi_prov_portal();
 
         // Wait until user connects phone and submits hotspot credentials on captive portal
@@ -1504,11 +1557,11 @@ void app_main(void) {
     ESP_LOGI(TAG, "📸 Camera Snapshot:    http://%s:81/capture", s_robot_ip);
     ESP_LOGI(TAG, "================================================");
 
-    // 1. Supabase Pairing Handshake
+    // 1. Supabase Pairing Handshake with Unique Hardware ID
     char req_body[256];
     snprintf(req_body, sizeof(req_body), 
              "{\"lumi_id\":\"%s\",\"device_secret\":\"%s\"}", 
-             LUMI_ID, DEVICE_SECRET);
+             s_lumi_id, DEVICE_SECRET);
 
     char reg_url[128];
     snprintf(reg_url, sizeof(reg_url), "%s/functions/v1/register-robot", SUPABASE_BASE_URL);
@@ -1599,7 +1652,7 @@ void app_main(void) {
     char hb_body[320];
     snprintf(hb_body, sizeof(hb_body), 
              "{\"lumi_id\":\"%s\",\"device_secret\":\"%s\",\"battery_percent\":90,\"wifi_signal\":4,\"local_ip\":\"%s\"}", 
-             LUMI_ID, DEVICE_SECRET, s_robot_ip);
+             s_lumi_id, DEVICE_SECRET, s_robot_ip);
 
     int hb_ticks = 0;
     while (1) {
@@ -1665,7 +1718,7 @@ void app_main(void) {
                 .topic = "telemetry",
                 .lossy = true
             };
-            livekit_room_publish_data(s_room_handle, &pub_opts);
+            safe_livekit_publish(&pub_opts);
         }
     }
 }

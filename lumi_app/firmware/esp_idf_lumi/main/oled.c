@@ -821,6 +821,32 @@ void oled_show_wifi_setup_screen(const char *ap_ssid) {
     ssd1306_render();
 }
 
+void oled_show_connecting_wifi(const char *ssid) {
+    if (!s_oled_ready) return;
+
+    s_pairing_screen_active = true;
+
+    taskENTER_CRITICAL(&s_oled_mux);
+    memset(s_framebuffer, 0, sizeof(s_framebuffer));
+
+    // Header Title
+    draw_string(20, 6, "CONNECTING...", 1);
+
+    // Divider Line (y=18, 108px wide)
+    for (int x = 10; x < 118; x++) {
+        draw_pixel(x, 18, true);
+    }
+
+    char net_buf[32];
+    snprintf(net_buf, sizeof(net_buf), "%.16s", ssid ? ssid : "Wi-Fi");
+    draw_string(14, 28, net_buf, 1);
+
+    draw_string(14, 46, "PLEASE WAIT", 1);
+    taskEXIT_CRITICAL(&s_oled_mux);
+
+    ssd1306_render();
+}
+
 void oled_draw_eyes(int mood, int lookDir) {
     if (mood < 0) mood = 0;
     if (mood > 8) mood = 8;
