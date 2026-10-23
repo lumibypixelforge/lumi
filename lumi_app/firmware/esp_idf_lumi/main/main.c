@@ -35,6 +35,8 @@
 #include <math.h>
 #include "mbedtls/base64.h"
 #include "lwip/sockets.h"
+#include "lwip/dns.h"
+#include "esp_netif.h"
 
 // LiveKit SDK
 #include "livekit.h"
@@ -737,8 +739,35 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         snprintf(s_robot_ip, sizeof(s_robot_ip), IPSTR, IP2STR(&event->ip_info.ip));
+
+        // Configure robust public DNS servers (Google 8.8.8.8 & Cloudflare 1.1.1.1).
+        // On mobile phone hotspots (Android / Samsung Galaxy), the phone's internal DNS proxy
+        // frequently drops or refuses to route plaintext UDP port 53 DNS queries from IoT devices.
+        // Explicitly setting public DNS servers allows getaddrinfo() to resolve Supabase instantly!
+        esp_netif_t *netif = event->esp_netif;
+        if (netif) {
+            esp_netif_dns_info_t dns_main = {0};
+            dns_main.ip.type = ESP_IPADDR_TYPE_V4;
+            dns_main.ip.u_addr.ip4.addr = ESP_IP4TOADDR(8, 8, 8, 8);
+            esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main);
+
+            esp_netif_dns_info_t dns_backup = {0};
+            dns_backup.ip.type = ESP_IPADDR_TYPE_V4;
+            dns_backup.ip.u_addr.ip4.addr = ESP_IP4TOADDR(1, 1, 1, 1);
+            esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
+        }
+        ip_addr_t d1;
+        d1.type = IPADDR_TYPE_V4;
+        d1.u_addr.ip4.addr = ESP_IP4TOADDR(8, 8, 8, 8);
+        dns_setserver(0, &d1);
+
+        ip_addr_t d2;
+        d2.type = IPADDR_TYPE_V4;
+        d2.u_addr.ip4.addr = ESP_IP4TOADDR(1, 1, 1, 1);
+        dns_setserver(1, &d2);
+
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-        ESP_LOGI(TAG, "🎉 Connected to Wi-Fi! Robot IP: %s", s_robot_ip);
+        ESP_LOGI(TAG, "🎉 Connected to Wi-Fi! Robot IP: %s (DNS: 8.8.8.8, 1.1.1.1)", s_robot_ip);
     }
 }
 
@@ -1130,6 +1159,9 @@ static char* http_post_json(const char *url, const char *json_body) {
         esp_http_client_fetch_headers(client);
         int read_len = esp_http_client_read_response(client, response_buffer, 2047);
         if (read_len >= 0) response_buffer[read_len] = '\0';
+    } else {
+        free(response_buffer);
+        response_buffer = NULL;
     }
     esp_http_client_cleanup(client);
     return response_buffer;
@@ -1574,11 +1606,11 @@ void app_main(void) {
         ESP_LOGW(TAG, "No Wi-Fi credentials configured. Launching setup hotspot immediately.");
         need_prov = true;
     } else {
-        ESP_LOGI(TAG, "Attempting connection to saved Wi-Fi [%s] (timeout: 12s)...", s_wifi_ssid);
+        ESP_LOGI(TAG, "Attempting connection to saved Wi-Fi [%s] (timeout: 30s)...", s_wifi_ssid);
         oled_show_connecting_wifi(s_wifi_ssid);
-        EventBits_t conn_bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, false, true, pdMS_TO_TICKS(12000));
+        EventBits_t conn_bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, false, true, pdMS_TO_TICKS(30000));
         if ((conn_bits & WIFI_CONNECTED_BIT) == 0) {
-            ESP_LOGW(TAG, "❌ Could not connect to saved Wi-Fi [%s] within 12s", s_wifi_ssid);
+            ESP_LOGW(TAG, "❌ Could not connect to saved Wi-Fi [%s] within 30s", s_wifi_ssid);
             need_prov = true;
         }
     }
