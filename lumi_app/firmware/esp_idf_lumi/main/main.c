@@ -679,6 +679,7 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 static char s_robot_ip[32] = "127.0.0.1";
 static httpd_handle_t s_prov_httpd = NULL;
+static esp_netif_t *s_ap_netif = NULL;
 
 static esp_err_t load_wifi_credentials_nvs(void) {
     nvs_handle_t nvs_handle;
@@ -1083,6 +1084,10 @@ static httpd_handle_t start_wifi_prov_portal(void) {
 
 static void stop_wifi_prov_portal(void) {
     stop_dns_server();
+    if (s_ap_netif) {
+        esp_netif_dhcps_stop(s_ap_netif);
+        s_ap_netif = NULL;
+    }
     if (s_prov_httpd) {
         httpd_stop(s_prov_httpd);
         s_prov_httpd = NULL;
@@ -1096,8 +1101,23 @@ static void init_wifi(void) {
     s_wifi_event_group = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-    esp_netif_create_default_wifi_ap();
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+    (void)sta_netif;
+    s_ap_netif = esp_netif_create_default_wifi_ap();
+
+    // Must stop DHCP server before changing IP configuration on SoftAP
+    esp_netif_dhcps_stop(s_ap_netif);
+
+    // Assign fixed IP 192.168.4.1/24 to the SoftAP interface
+    esp_netif_ip_info_t ap_ip_info;
+    memset(&ap_ip_info, 0, sizeof(ap_ip_info));
+    ap_ip_info.ip.addr = ESP_IP4TOADDR(192, 168, 4, 1);
+    ap_ip_info.netmask.addr = ESP_IP4TOADDR(255, 255, 255, 0);
+    ap_ip_info.gw.addr = ESP_IP4TOADDR(192, 168, 4, 1);
+    ESP_ERROR_CHECK(esp_netif_set_ip_info(s_ap_netif, &ap_ip_info));
+
+    // Start DHCP server so joining phones get an IP in 192.168.4.x
+    ESP_ERROR_CHECK(esp_netif_dhcps_start(s_ap_netif));
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -1118,9 +1138,9 @@ static void init_wifi(void) {
     wifi_config_t wifi_ap_config = {
         .ap = {
             .channel = 1,
-            .password = "",
+            .password = "12345678",
             .max_connection = 4,
-            .authmode = WIFI_AUTH_OPEN
+            .authmode = WIFI_AUTH_WPA2_PSK
         },
     };
     strncpy((char *)wifi_ap_config.ap.ssid, s_ap_ssid, sizeof(wifi_ap_config.ap.ssid) - 1);
@@ -1637,7 +1657,7 @@ void app_main(void) {
     if (need_prov) {
         ESP_LOGW(TAG, "================================================");
         ESP_LOGW(TAG, "📡 LAUNCHING LUMI WI-FI SETUP HOTSPOT: [%s]", s_ap_ssid);
-        ESP_LOGW(TAG, "👉 1. Connect phone Wi-Fi to '%s'", s_ap_ssid);
+        ESP_LOGW(TAG, "👉 1. Connect phone Wi-Fi to '%s' (Password: 12345678)", s_ap_ssid);
         ESP_LOGW(TAG, "👉 2. Open browser: http://192.168.4.1");
         ESP_LOGW(TAG, "================================================");
 

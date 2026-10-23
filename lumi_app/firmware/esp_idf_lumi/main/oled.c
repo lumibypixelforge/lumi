@@ -808,14 +808,16 @@ void oled_show_wifi_setup_screen(const char *ap_ssid) {
     }
 
     // Step 1: Connect to Hotspot
-    draw_string(8, 22, "1.CONNECT PHONE TO:", 1);
+    draw_string(6, 18, "1.CONNECT PHONE TO:", 1);
 
     char ap_buf[32];
     snprintf(ap_buf, sizeof(ap_buf), "%s", ap_ssid ? ap_ssid : "LUMI-SETUP");
-    draw_string(8, 34, ap_buf, 1);
+    draw_string(6, 29, ap_buf, 1);
+
+    draw_string(6, 40, "PASS: 12345678", 1);
 
     // Step 2: Open Browser
-    draw_string(8, 48, "2.OPEN 192.168.4.1", 1);
+    draw_string(6, 52, "2.OPEN 192.168.4.1", 1);
     taskEXIT_CRITICAL(&s_oled_mux);
 
     ssd1306_render();
