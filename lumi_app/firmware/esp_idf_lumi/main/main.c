@@ -430,9 +430,9 @@ static void tx_keepalive_task(void *pvParameters) {
         if (s_i2s_tx_handle && !s_is_user_speaking && (now_ms - s_last_speaker_play_ms > 350)) {
             size_t written = 0;
             i2s_channel_write(s_i2s_tx_handle, s_silence, sizeof(s_silence), &written, pdMS_TO_TICKS(40));
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(20));
         }
+        // Always yield 20ms to allow Wi-Fi driver, networking, and FreeRTOS IDLE0 to run cleanly
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
@@ -514,7 +514,7 @@ static esp_err_t init_i2s_audio(void) {
     }
 
     // Launch continuous background silence feeder so master clocks BCLK & WS never starve
-    xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 3, NULL, 0);
+    xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 2, NULL, 0);
 
     // Play pleasant greeting chime so client verifies speaker hardware on boot
     play_robot_greeting_chime();
