@@ -422,6 +422,8 @@ static void play_cute_hmmm_sound(void) {
         size_t written = 0;
         i2s_channel_write(s_i2s_tx_handle, step_buf, sizeof(step_buf), &written, pdMS_TO_TICKS(25));
     }
+}
+
 static void audio_stream_task(void *pvParameters);
 
 static void tx_keepalive_task(void *pvParameters) {
@@ -1400,7 +1402,7 @@ static char s_livekit_url[128] = {0};
 static char s_livekit_token[512] = {0};
 static SemaphoreHandle_t s_livekit_pub_mutex = NULL;
 
-static livekit_err_t safe_livekit_publish(const livekit_data_publish_options_t *opts) {
+static livekit_err_t safe_livekit_publish(livekit_data_publish_options_t *opts) {
     if (!s_room_connected || !s_room_handle || !opts) {
         return LIVEKIT_ERR_INVALID_STATE;
     }
