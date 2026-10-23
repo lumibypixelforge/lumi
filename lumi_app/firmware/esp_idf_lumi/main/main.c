@@ -1029,7 +1029,6 @@ static httpd_handle_t start_wifi_prov_portal(void) {
     config.ctrl_port = 32770;
     config.max_open_sockets = 8;      // Chrome may open parallel connections
     config.stack_size = 8192;         // headroom for large request-header parsing
-    config.max_uri_len = 2048;        // room for long Chrome headers/query strings
 
     if (httpd_start(&s_prov_httpd, &config) == ESP_OK) {
         httpd_uri_t index_uri = {
