@@ -347,8 +347,17 @@ static void apply_differential_drive(float x, float y) {
 static i2s_chan_handle_t s_i2s_tx_handle = NULL;
 static i2s_chan_handle_t s_i2s_rx_handle = NULL;
 
+// Audio Echo Cancellation (AEC) & Half-duplex Ducking state
+static bool s_room_connected = false;
+static bool s_is_user_speaking = false;
+static bool s_is_audio_listening = false; // Controlled by mobile app via 'listen_start' and 'listen_stop'
+static uint32_t s_last_speaker_play_ms = 0;
+static uint32_t s_last_interaction_ms = 0;
+static bool s_is_in_thinking_mode = false;
+
 static void play_tone(uint32_t freq_hz, uint32_t duration_ms) {
     if (!s_i2s_tx_handle) return;
+    s_last_speaker_play_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
     int samples_count = (16000 * duration_ms) / 1000;
     int32_t *buf = malloc(samples_count * 2 * sizeof(int32_t));
     if (!buf) return;
@@ -379,14 +388,6 @@ static void play_connected_chime(void) {
     vTaskDelay(pdMS_TO_TICKS(30));
     play_tone(880, 150);
 }
-
-// Audio Echo Cancellation (AEC) & Half-duplex Ducking state
-static bool s_room_connected = false;
-static bool s_is_user_speaking = false;
-static bool s_is_audio_listening = false; // Controlled by mobile app via 'listen_start' and 'listen_stop'
-static uint32_t s_last_speaker_play_ms = 0;
-static uint32_t s_last_interaction_ms = 0;
-static bool s_is_in_thinking_mode = false;
 
 // Synthesize a cute, curious "hmmm..." vocal inflection
 static void play_cute_hmmm_sound(void) {
@@ -425,6 +426,14 @@ static void tx_keepalive_task(void *pvParameters) {
     (void)pvParameters;
     static const int32_t s_silence[320 * 2] = {0}; // 20ms block
     while (1) {
+        // Sleep completely during boot and Wi-Fi provisioning portal!
+        // This guarantees Core 0 has 100% undisturbed priority for Wi-Fi driver, SoftAP, and DHCP,
+        // exactly matching the reliable behavior of Action #10.
+        if (!s_room_connected) {
+            vTaskDelay(pdMS_TO_TICKS(250));
+            continue;
+        }
+
         uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         // Only feed silence when speaker is NOT playing chimes or user voice
         if (s_i2s_tx_handle && !s_is_user_speaking && (now_ms - s_last_speaker_play_ms > 350)) {
@@ -454,8 +463,9 @@ static esp_err_t init_i2s_audio(void) {
     i2s_std_slot_config_t std_slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
     std_slot.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
 
-    // Separate GPIO configs for TX and RX so drivers do not contend for opposite directions
-    i2s_std_config_t tx_std_cfg = {
+    // In ESP-IDF v5 full-duplex standard mode, both TX and RX share the same controller (I2S_NUM_0),
+    // shared clock signals (BCLK & WS), and shared data pins (DOUT & DIN).
+    i2s_std_config_t std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
         .slot_cfg = std_slot,
         .gpio_cfg = {
@@ -463,23 +473,6 @@ static esp_err_t init_i2s_audio(void) {
             .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
             .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
             .dout = (gpio_num_t)AMP_I2S_DIN_PIN,
-            .din  = I2S_GPIO_UNUSED,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv   = false,
-            },
-        },
-    };
-
-    i2s_std_config_t rx_std_cfg = {
-        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-        .slot_cfg = std_slot,
-        .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
-            .bclk = (gpio_num_t)AMP_I2S_BCLK_PIN,
-            .ws   = (gpio_num_t)AMP_I2S_LRC_PIN,
-            .dout = I2S_GPIO_UNUSED,
             .din  = (gpio_num_t)MIC_I2S_SD_PIN,
             .invert_flags = {
                 .mclk_inv = false,
@@ -489,13 +482,13 @@ static esp_err_t init_i2s_audio(void) {
         },
     };
 
-    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &tx_std_cfg);
+    err = i2s_channel_init_std_mode(s_i2s_tx_handle, &std_cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to init I2S TX std mode: 0x%x", err);
         return err;
     }
 
-    err = i2s_channel_init_std_mode(s_i2s_rx_handle, &rx_std_cfg);
+    err = i2s_channel_init_std_mode(s_i2s_rx_handle, &std_cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to init I2S RX std mode: 0x%x", err);
         return err;
@@ -513,11 +506,11 @@ static esp_err_t init_i2s_audio(void) {
         return err;
     }
 
-    // Launch continuous background silence feeder so master clocks BCLK & WS never starve
-    xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 2, NULL, 0);
-
     // Play pleasant greeting chime so client verifies speaker hardware on boot
     play_robot_greeting_chime();
+
+    // Launch continuous background silence feeder (sleeps until LiveKit is connected)
+    xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 2, NULL, 0);
 
     return ESP_OK;
 }
