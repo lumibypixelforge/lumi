@@ -422,22 +422,15 @@ static void play_cute_hmmm_sound(void) {
         size_t written = 0;
         i2s_channel_write(s_i2s_tx_handle, step_buf, sizeof(step_buf), &written, pdMS_TO_TICKS(25));
     }
-}
+static void audio_stream_task(void *pvParameters);
 
 static void tx_keepalive_task(void *pvParameters) {
     (void)pvParameters;
     static const int32_t s_silence[320 * 2] = {0}; // 20ms block
     while (1) {
-        // Sleep completely during boot and Wi-Fi provisioning portal!
-        // This guarantees Core 0 has 100% undisturbed priority for Wi-Fi driver, SoftAP, and DHCP,
-        // exactly matching the reliable behavior of Action #10.
-        if (!s_room_connected) {
-            vTaskDelay(pdMS_TO_TICKS(250));
-            continue;
-        }
-
         uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        // Only feed silence when speaker is NOT playing chimes or user voice
+        // Feed silence when speaker is NOT playing chimes or user voice.
+        // This ensures BCLK (GPIO 41) and WS (GPIO 42) clocks are ALWAYS running so INMP441 stays active!
         if (s_i2s_tx_handle && !s_is_user_speaking && (now_ms - s_last_speaker_play_ms > 350)) {
             size_t written = 0;
             i2s_channel_write(s_i2s_tx_handle, s_silence, sizeof(s_silence), &written, pdMS_TO_TICKS(40));
@@ -511,8 +504,11 @@ static esp_err_t init_i2s_audio(void) {
     // Play pleasant greeting chime so client verifies speaker hardware on boot
     play_robot_greeting_chime();
 
-    // Launch continuous background silence feeder (sleeps until LiveKit is connected)
+    // Launch continuous background silence feeder to drive I2S master clocks (BCLK=41, WS=42)
     xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 2, NULL, 0);
+
+    // Launch continuous microphone capture & diagnostic task on Core 0
+    xTaskCreatePinnedToCore(audio_stream_task, "lk_mic_task", 5120, NULL, 4, NULL, 0);
 
     return ESP_OK;
 }
@@ -1498,32 +1494,12 @@ static void audio_stream_task(void *pvParameters) {
     uint32_t silent_packet_count = 0;
 
     while (1) {
-        if (!s_i2s_rx_handle || !s_room_connected || !s_room_handle) {
-            vTaskDelay(pdMS_TO_TICKS(80));
+        if (!s_i2s_rx_handle) {
+            vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
         uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-
-        // If client has not toggled listening ON in the app, perform a periodic hardware health check every 3s
-        // so serial monitor logs live INMP441 signal levels without wasting LiveKit bandwidth.
-        if (!s_is_audio_listening) {
-            static uint32_t s_last_diag_ms = 0;
-            if (now_ms - s_last_diag_ms > 3000) {
-                s_last_diag_ms = now_ms;
-                size_t br = 0;
-                i2s_channel_read(s_i2s_rx_handle, raw_stereo, 256 * sizeof(int32_t), &br, pdMS_TO_TICKS(40));
-                int32_t diag_peak = 0;
-                for (int i = 0; i < (int)(br / sizeof(int32_t)); i++) {
-                    int32_t sample = labs(raw_stereo[i] >> 14);
-                    if (sample > diag_peak) diag_peak = sample;
-                }
-                ESP_LOGI(TAG, "🎙️ Mic hardware health (listening=OFF in app): peak=%ld/32767, raw0=0x%08lx",
-                         (long)diag_peak, (unsigned long)raw_stereo[0]);
-            }
-            vTaskDelay(pdMS_TO_TICKS(80));
-            continue;
-        }
 
         // Half-duplex Acoustic Echo Cancellation (AEC):
         // Duck microphone transmission if user is actively speaking through robot speaker
@@ -1542,13 +1518,14 @@ static void audio_stream_task(void *pvParameters) {
             continue;
         }
 
-        if (bytes_read > 0 && s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
+        if (bytes_read > 0) {
             int samples = bytes_read / (2 * sizeof(int32_t));
             if (samples > chunk_samples) samples = chunk_samples;
 
             // Measure channel energies to determine active microphone channel (Left vs Right)
             int64_t energy_l = 0;
             int64_t energy_r = 0;
+            int64_t sum_squares = 0;
             for (int i = 0; i < samples; i++) {
                 int32_t l = raw_stereo[i * 2] >> 14;
                 int32_t r = raw_stereo[i * 2 + 1] >> 14;
@@ -1567,38 +1544,46 @@ static void audio_stream_task(void *pvParameters) {
                 if (sample_16 > 32767) sample_16 = 32767;
                 if (sample_16 < -32768) sample_16 = -32768;
                 mono_out[i] = (int16_t)sample_16;
-                if (labs(sample_16) > peak) peak = labs(sample_16);
+                int32_t abs_s = labs(sample_16);
+                if (abs_s > peak) peak = abs_s;
+                sum_squares += (int64_t)sample_16 * sample_16;
+            }
+            int32_t rms = (int32_t)sqrtf((float)(sum_squares / (samples > 0 ? samples : 1)));
+
+            // Real-time Hardware Diagnostic Telemetry for test_mic.py and serial console:
+            // Outputs every 150ms or immediately when audio is detected (peak > 150)
+            static uint32_t s_last_diag_ms = 0;
+            if (now_ms - s_last_diag_ms >= 150 || (peak > 150 && now_ms - s_last_diag_ms >= 50)) {
+                s_last_diag_ms = now_ms;
+                ESP_LOGI(TAG, "[MIC_TEST] PEAK=%ld RMS=%ld CH_L=0x%08lx CH_R=0x%08lx",
+                         (long)peak, (long)rms, (unsigned long)raw_stereo[0], (unsigned long)raw_stereo[1]);
             }
 
-            static uint32_t s_last_mic_log_ms = 0;
-            if (now_ms - s_last_mic_log_ms > 2000) {
-                s_last_mic_log_ms = now_ms;
-                ESP_LOGI(TAG, "🎙️ Streaming mic audio: peak=%ld/32767 (%d samples, ch=%s, raw0=0x%08lx)",
-                         (long)peak, (int)samples, use_left ? "L" : "R", (unsigned long)raw_stereo[0]);
-            }
-
-            // Silence suppression / VAD:
-            // When sound/speech is active (peak > 50), stream continuously at full rate (25 packets/sec).
-            // When completely quiet (peak <= 50), throttle to 2 keepalive packets/sec to prevent SCTP congestion!
-            if (peak > 50) {
-                silent_packet_count = 0;
-            } else {
-                silent_packet_count++;
-                if (silent_packet_count % 12 != 0) {
-                    continue; // Conserve bandwidth for video stream during silence
+            // Stream to LiveKit WebRTC if room is connected and client toggled Listening ON
+            if (s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
+                // Silence suppression / VAD:
+                // When sound/speech is active (peak > 50), stream continuously at full rate (25 packets/sec).
+                // When completely quiet (peak <= 50), throttle to 2 keepalive packets/sec to prevent SCTP congestion!
+                if (peak > 50) {
+                    silent_packet_count = 0;
+                } else {
+                    silent_packet_count++;
+                    if (silent_packet_count % 12 != 0) {
+                        continue; // Conserve bandwidth for video stream during silence
+                    }
                 }
-            }
 
-            livekit_data_payload_t payload = {
-                .bytes = (uint8_t*)mono_out,
-                .size = samples * sizeof(int16_t)
-            };
-            livekit_data_publish_options_t pub_opts = {
-                .payload = &payload,
-                .topic = "robot_audio",
-                .lossy = true
-            };
-            safe_livekit_publish(&pub_opts);
+                livekit_data_payload_t payload = {
+                    .bytes = (uint8_t*)mono_out,
+                    .size = samples * sizeof(int16_t)
+                };
+                livekit_data_publish_options_t pub_opts = {
+                    .payload = &payload,
+                    .topic = "robot_audio",
+                    .lossy = true
+                };
+                safe_livekit_publish(&pub_opts);
+            }
         }
     }
 }
@@ -1763,8 +1748,6 @@ void app_main(void) {
         ESP_LOGI(TAG, "Robot live! Connected to LiveKit Cloud WebRTC room!");
         // Launch worldwide camera streaming task on Core 1
         xTaskCreatePinnedToCore(video_stream_task, "lk_vid_task", 8192, NULL, 5, NULL, 1);
-        // Launch worldwide robot room audio streaming task on Core 0
-        xTaskCreatePinnedToCore(audio_stream_task, "lk_mic_task", 5120, NULL, 4, NULL, 0);
     } else {
         ESP_LOGE(TAG, "Failed to create LiveKit room object, error: %d", lk_err);
     }
