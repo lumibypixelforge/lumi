@@ -1027,7 +1027,7 @@ static httpd_handle_t start_wifi_prov_portal(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
     config.ctrl_port = 32770;
-    config.max_open_sockets = 8;      // Chrome may open parallel connections
+    config.max_open_sockets = 4;
     config.stack_size = 8192;         // headroom for large request-header parsing
 
     if (httpd_start(&s_prov_httpd, &config) == ESP_OK) {
