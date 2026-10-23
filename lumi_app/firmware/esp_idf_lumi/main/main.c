@@ -1415,7 +1415,7 @@ static void on_room_state_changed(livekit_connection_state_t state, void *ctx) {
 // Dedicated task for publishing camera frames worldwide over LiveKit WebRTC
 static void video_stream_task(void *pvParameters) {
     (void)pvParameters;
-    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (12.5 FPS smooth)");
+    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (10 FPS smooth)");
     int consecutive_fails = 0;
     while (1) {
         if (s_room_connected && s_room_handle) {
@@ -1449,7 +1449,7 @@ static void video_stream_task(void *pvParameters) {
                 }
                 xSemaphoreGive(s_camera_mutex);
             }
-            vTaskDelay(pdMS_TO_TICKS(80)); // ~12.5 FPS for smooth video
+            vTaskDelay(pdMS_TO_TICKS(100)); // ~10 FPS for rock-solid stability and zero SCTP buffer congestion
         } else {
             vTaskDelay(pdMS_TO_TICKS(150));
         }
@@ -1478,13 +1478,32 @@ static void audio_stream_task(void *pvParameters) {
     uint32_t silent_packet_count = 0;
 
     while (1) {
-        // Stream ONLY when phone app has explicitly toggled listening ON
-        if (!s_i2s_rx_handle || !s_is_audio_listening || !s_room_connected || !s_room_handle) {
-            vTaskDelay(pdMS_TO_TICKS(50));
+        if (!s_i2s_rx_handle || !s_room_connected || !s_room_handle) {
+            vTaskDelay(pdMS_TO_TICKS(80));
             continue;
         }
 
         uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+
+        // If client has not toggled listening ON in the app, perform a periodic hardware health check every 3s
+        // so serial monitor logs live INMP441 signal levels without wasting LiveKit bandwidth.
+        if (!s_is_audio_listening) {
+            static uint32_t s_last_diag_ms = 0;
+            if (now_ms - s_last_diag_ms > 3000) {
+                s_last_diag_ms = now_ms;
+                size_t br = 0;
+                i2s_channel_read(s_i2s_rx_handle, raw_stereo, 256 * sizeof(int32_t), &br, pdMS_TO_TICKS(40));
+                int32_t diag_peak = 0;
+                for (int i = 0; i < (int)(br / sizeof(int32_t)); i++) {
+                    int32_t sample = labs(raw_stereo[i] >> 14);
+                    if (sample > diag_peak) diag_peak = sample;
+                }
+                ESP_LOGI(TAG, "🎙️ Mic hardware health (listening=OFF in app): peak=%ld/32767, raw0=0x%08lx",
+                         (long)diag_peak, (unsigned long)raw_stereo[0]);
+            }
+            vTaskDelay(pdMS_TO_TICKS(80));
+            continue;
+        }
 
         // Half-duplex Acoustic Echo Cancellation (AEC):
         // Duck microphone transmission if user is actively speaking through robot speaker
@@ -1756,12 +1775,15 @@ void app_main(void) {
             }
         }
 
-        // Fast auto-reconnect if LiveKit room connection was lost or dropped (checks every 2 seconds)
-        if (!s_room_connected && s_room_handle != NULL && strlen(s_livekit_token) > 0 && (hb_ticks % 2 == 0)) {
-            ESP_LOGW(TAG, "LiveKit room disconnected. Attempting fast auto-reconnect...");
-            livekit_err_t rec_err = livekit_room_connect(s_room_handle, s_livekit_url, s_livekit_token);
-            if (rec_err != LIVEKIT_ERR_NONE) {
-                ESP_LOGE(TAG, "LiveKit reconnect failed: %d. Refreshing token...", rec_err);
+        // Automatic reconnection if LiveKit room connection was lost or dropped.
+        // LiveKit's internal engine automatically attempts rapid reconnects for the first ~15 seconds.
+        // We only intervene if disconnected for >15s (meaning the internal engine gave up or token expired),
+        // completely eliminating socket collisions and 'Engine already connecting' timeout errors!
+        static int s_lk_disconnected_ticks = 0;
+        if (!s_room_connected) {
+            s_lk_disconnected_ticks++;
+            if (s_room_handle != NULL && strlen(s_livekit_token) > 0 && s_lk_disconnected_ticks >= 15 && (s_lk_disconnected_ticks % 10 == 0)) {
+                ESP_LOGW(TAG, "LiveKit room disconnected for %ds. Refreshing token and reconnecting...", s_lk_disconnected_ticks);
                 char *new_res = http_post_json(tok_url, req_body);
                 if (new_res) {
                     cJSON *tok_root = cJSON_Parse(new_res);
@@ -1778,6 +1800,8 @@ void app_main(void) {
                     free(new_res);
                 }
             }
+        } else {
+            s_lk_disconnected_ticks = 0;
         }
 
         // Send Supabase heartbeat every 30 seconds

@@ -319,7 +319,12 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
     );
   }
 
-  return null;
+  return (
+    <View style={styles.cameraPlaceholder}>
+      <Video size={36} color="#00F0FF" />
+      <Text style={[styles.cameraPlaceholderText, { color: '#94A3B8' }]}>Connecting video feed…</Text>
+    </View>
+  );
 });
 
 export default function DriveScreen() {
