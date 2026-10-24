@@ -558,6 +558,16 @@ static esp_err_t init_camera(void) {
     if (s != NULL) {
         s->set_vflip(s, 1);    // 180° rotation
         s->set_hmirror(s, 1);  // 180° rotation
+        s->set_brightness(s, 1);   // slight boost for indoor clarity
+        s->set_contrast(s, 1);
+        s->set_saturation(s, 0);
+        s->set_whitebal(s, 1);     // Auto White Balance
+        s->set_awb_gain(s, 1);
+        s->set_exposure_ctrl(s, 1);// Auto Exposure Control
+        s->set_aec2(s, 1);         // Enhanced Auto Exposure (anti-flicker under 50Hz/60Hz lights)
+        s->set_gain_ctrl(s, 1);    // Auto Gain Control
+        s->set_bpc(s, 1);          // Black Pixel Correction (removes sensor noise/hot pixels)
+        s->set_wpc(s, 1);          // White Pixel Correction
     }
     ESP_LOGI(TAG, "OV3660 camera initialized successfully!");
     return ESP_OK;
@@ -1061,6 +1071,22 @@ static httpd_handle_t start_wifi_prov_portal(void) {
         };
         httpd_register_uri_handler(s_prov_httpd, &g204_uri);
 
+        httpd_uri_t gen204_uri = {
+            .uri = "/gen_204",
+            .method = HTTP_GET,
+            .handler = captive_redirect_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(s_prov_httpd, &gen204_uri);
+
+        httpd_uri_t g204_alt_uri = {
+            .uri = "/generate204",
+            .method = HTTP_GET,
+            .handler = captive_redirect_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(s_prov_httpd, &g204_alt_uri);
+
         httpd_uri_t apple_uri = {
             .uri = "/hotspot-detect.html",
             .method = HTTP_GET,
@@ -1441,29 +1467,35 @@ static void video_stream_task(void *pvParameters) {
             if (s_camera_mutex && xSemaphoreTake(s_camera_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                 fb = esp_camera_fb_get();
                 if (fb) {
-                    livekit_data_payload_t payload = {
-                        .bytes = (uint8_t*)fb->buf,
-                        .size = fb->len
-                    };
-                    livekit_data_publish_options_t pub_opts = {
-                        .payload = &payload,
-                        .topic = "video",
-                        .lossy = true
-                    };
-                    livekit_err_t res = safe_livekit_publish(&pub_opts);
-                    esp_camera_fb_return(fb);
-                    if (res != LIVEKIT_ERR_NONE) {
-                        consecutive_fails++;
-                        // If data channel is congested (e.g. phone disconnected or reconnecting),
-                        // back off progressively to allow the SCTP socket buffer to flush and recover cleanly!
-                        if (consecutive_fails > 3) {
-                            vTaskDelay(pdMS_TO_TICKS(350));
+                    // Discard incomplete / corrupted DMA frames (must have SOI 0xFF,0xD8 and EOI 0xFF,0xD9)
+                    // This eliminates black frame flashing, screen tearing, and watchdog timeouts on the app!
+                    if (fb->len > 1000 &&
+                        fb->buf[0] == 0xFF && fb->buf[1] == 0xD8 &&
+                        fb->buf[fb->len - 2] == 0xFF && fb->buf[fb->len - 1] == 0xD9) {
+                        livekit_data_payload_t payload = {
+                            .bytes = (uint8_t*)fb->buf,
+                            .size = fb->len
+                        };
+                        livekit_data_publish_options_t pub_opts = {
+                            .payload = &payload,
+                            .topic = "video",
+                            .lossy = true
+                        };
+                        livekit_err_t res = safe_livekit_publish(&pub_opts);
+                        if (res != LIVEKIT_ERR_NONE) {
+                            consecutive_fails++;
+                            // If data channel is congested (e.g. phone disconnected or reconnecting),
+                            // back off progressively to allow the SCTP socket buffer to flush and recover cleanly!
+                            if (consecutive_fails > 3) {
+                                vTaskDelay(pdMS_TO_TICKS(350));
+                            } else {
+                                vTaskDelay(pdMS_TO_TICKS(120));
+                            }
                         } else {
-                            vTaskDelay(pdMS_TO_TICKS(120));
+                            consecutive_fails = 0;
                         }
-                    } else {
-                        consecutive_fails = 0;
                     }
+                    esp_camera_fb_return(fb);
                 }
                 xSemaphoreGive(s_camera_mutex);
             }
@@ -1553,9 +1585,9 @@ static void audio_stream_task(void *pvParameters) {
             int32_t rms = (int32_t)sqrtf((float)(sum_squares / (samples > 0 ? samples : 1)));
 
             // Real-time Hardware Diagnostic Telemetry for test_mic.py and serial console:
-            // Outputs every 150ms or immediately when audio is detected (peak > 150)
+            // Log every 2 seconds to keep serial monitor responsive and unflooded
             static uint32_t s_last_diag_ms = 0;
-            if (now_ms - s_last_diag_ms >= 150 || (peak > 150 && now_ms - s_last_diag_ms >= 50)) {
+            if (now_ms - s_last_diag_ms >= 2000) {
                 s_last_diag_ms = now_ms;
                 ESP_LOGI(TAG, "[MIC_TEST] PEAK=%ld RMS=%ld CH_L=0x%08lx CH_R=0x%08lx",
                          (long)peak, (long)rms, (unsigned long)raw_stereo[0], (unsigned long)raw_stereo[1]);
