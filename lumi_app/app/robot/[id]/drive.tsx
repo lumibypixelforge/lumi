@@ -739,6 +739,17 @@ export default function DriveScreen() {
     };
   }, [id]);
 
+  // Periodic connection heartbeat to keep robot data channel responsive
+  useEffect(() => {
+    if (connectionState !== 'connected') return;
+    const heartbeat = setInterval(() => {
+      try {
+        controlChannel.send({ t: 'ping' });
+      } catch { }
+    }, 3000);
+    return () => clearInterval(heartbeat);
+  }, [connectionState]);
+
   // Active speed multiplier ref to prevent stale closure in PanResponder
   const speedMultiplierRef = useRef(speedMultiplier);
   useEffect(() => {
@@ -1069,20 +1080,13 @@ export default function DriveScreen() {
           </Pressable>
         </View>
 
-        {/* Camera Feed or Placeholder */}
-        {hasCloudFeed || videoTrack || cameraStreamUrl ? (
-          <DoubleBufferedCameraFeed
-            videoTrack={videoTrack}
-            cameraStreamUrl={cameraStreamUrl}
-            onHasCloudFrameChange={setHasCloudFeed}
-            connectionState={connectionState}
-          />
-        ) : (
-          <View style={styles.cameraPlaceholder}>
-            <Video size={36} color="#64748B" />
-            <Text style={styles.cameraPlaceholderText}>Connecting video feed…</Text>
-          </View>
-        )}
+        {/* Camera Feed Viewport (DoubleBufferedCameraFeed handles loading placeholder internally) */}
+        <DoubleBufferedCameraFeed
+          videoTrack={videoTrack}
+          cameraStreamUrl={cameraStreamUrl}
+          onHasCloudFrameChange={setHasCloudFeed}
+          connectionState={connectionState}
+        />
 
         {/* Fullscreen Button on Bottom-Right */}
         <Pressable
