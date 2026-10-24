@@ -216,7 +216,16 @@ const DoubleBufferedCameraFeed = React.memo(function DoubleBufferedCameraFeed({
     let mounted = true;
 
     const unsub = subscribeToCloudVideoFrame((uri) => {
-      if (!mounted || !uri) return;
+      if (!mounted) return;
+      if (!uri) {
+        hasSeededRef.current = false;
+        isPreloadingRef.current = false;
+        pendingUriRef.current = null;
+        setFrameA(null);
+        setFrameB(null);
+        onHasCloudFrameChange?.(false);
+        return;
+      }
       onHasCloudFrameChange?.(true);
 
       // Seed first frame immediately
@@ -458,12 +467,12 @@ export default function DriveScreen() {
         try {
           player.replace({ uri: nextUri });
           player.play();
-          // Fallback watchdog: if Android media status lags or drops finish event, advance smoothly after 160ms
+          // Fallback watchdog: advance smoothly if playback event is delayed
           fallbackTimer = setTimeout(() => {
             if (active && isPlaying) {
               playNext();
             }
-          }, 160);
+          }, 190);
         } catch (err) {
           console.warn('[RobotAudio] Play error:', err);
           isPlaying = false;
@@ -481,10 +490,31 @@ export default function DriveScreen() {
         }
       });
 
+      let pendingChunks: Uint8Array[] = [];
+      let pendingLength = 0;
+      const TARGET_BATCH_BYTES = 5120; // ~160ms at 16kHz mono 16-bit
+
       const unsubAudio = subscribeToRobotAudio(async (pcmBytes) => {
         if (!active || !pcmBytes || pcmBytes.length === 0) return;
         try {
-          const base64Wav = pcmToWavBase64(pcmBytes);
+          pendingChunks.push(pcmBytes);
+          pendingLength += pcmBytes.length;
+
+          // If audio is currently playing, buffer up to 160ms block for seamless continuous playback
+          if (pendingLength < TARGET_BATCH_BYTES && isPlaying) {
+            return;
+          }
+
+          const merged = new Uint8Array(pendingLength);
+          let offset = 0;
+          for (const chunk of pendingChunks) {
+            merged.set(chunk, offset);
+            offset += chunk.length;
+          }
+          pendingChunks = [];
+          pendingLength = 0;
+
+          const base64Wav = pcmToWavBase64(merged);
           const cacheDir = FileSystem.cacheDirectory || '';
           const filePath = `${cacheDir}lumi_audio_${slot}.wav`;
           slot = (slot + 1) % NUM_AUDIO_SLOTS;
@@ -493,8 +523,8 @@ export default function DriveScreen() {
             encoding: FileSystem.EncodingType.Base64,
           });
 
-          // Bound queue to max 3 chunks (~300ms) to ensure low-latency real-time listening
-          if (audioQueue.length >= 3) {
+          // Bound queue to max 2 blocks (~320ms) to ensure low-latency real-time listening
+          if (audioQueue.length >= 2) {
             audioQueue.shift();
           }
           audioQueue.push(filePath);
@@ -660,6 +690,11 @@ export default function DriveScreen() {
           onConnectionStateChange: (state) => {
             if (mounted) {
               setConnectionState(state);
+              if (state === 'connected') {
+                try {
+                  controlChannel.send({ t: 'client_ready' });
+                } catch { }
+              }
             }
           },
           onTelemetry: (telem) => {
@@ -680,6 +715,12 @@ export default function DriveScreen() {
             }
           },
         });
+
+        if (mounted) {
+          try {
+            controlChannel.send({ t: 'client_ready' });
+          } catch { }
+        }
       } catch (err: any) {
         if (mounted) {
           console.warn('[DriveScreen] Init connection warning:', err);

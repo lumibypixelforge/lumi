@@ -351,6 +351,7 @@ static i2s_chan_handle_t s_i2s_rx_handle = NULL;
 
 // Audio Echo Cancellation (AEC) & Half-duplex Ducking state
 static bool s_room_connected = false;
+static volatile bool s_client_connected = false; // Set to true when mobile client sends client_ready or active packets
 static bool s_is_user_speaking = false;
 static bool s_is_audio_listening = false; // Controlled by mobile app via 'listen_start' and 'listen_stop'
 static uint32_t s_last_speaker_play_ms = 0;
@@ -536,7 +537,7 @@ static esp_err_t init_camera(void) {
         .ledc_channel = LEDC_CHANNEL_7,
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_QVGA, // 320x240 for smooth, ultra-low latency worldwide streaming
-        .jpeg_quality = 28, // Optimized for smooth streaming without choking 2.4GHz Wi-Fi or SCTP buffers (~4-6KB/frame)
+        .jpeg_quality = 30, // Optimized ~3.5-4.5KB/frame: avoids SCTP buffer congestion and eliminates packet drops
         .fb_count = 2,
         .grab_mode = CAMERA_GRAB_LATEST,
         .fb_location = CAMERA_FB_IN_PSRAM
@@ -1222,21 +1223,19 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
     // 1. Direct binary audio stream over WebRTC data channel (topic "voice_stream")
     if (data->topic && strcmp(data->topic, "voice_stream") == 0) {
         s_is_user_speaking = true;
+        s_client_connected = true;
         s_last_speaker_play_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
         if (s_i2s_tx_handle && data->payload.size > 0) {
             // Incoming phone stream is 16-bit 16kHz mono PCM.
-            // Duplicate mono into stereo 32-bit (Left + Right) for MAX98357A I2S DAC with digital gain boost.
+            // Duplicate mono into stereo 32-bit (Left + Right) for MAX98357A I2S DAC with 1:1 clean scaling.
             size_t mono_samples = data->payload.size / sizeof(int16_t);
             if (mono_samples > 0) {
                 int32_t *stereo_buf = malloc(mono_samples * 2 * sizeof(int32_t));
                 if (stereo_buf) {
                     const int16_t *mono_ptr = (const int16_t *)data->payload.bytes;
                     for (size_t i = 0; i < mono_samples; i++) {
-                        int32_t boosted = (int32_t)mono_ptr[i] * 2; // +6dB gain boost for walkie-talkie projection
-                        if (boosted > 32767) boosted = 32767;
-                        if (boosted < -32768) boosted = -32768;
-                        int32_t sample = boosted << 16;
+                        int32_t sample = ((int32_t)mono_ptr[i]) << 16;
                         stereo_buf[i * 2]     = sample;
                         stereo_buf[i * 2 + 1] = sample;
                     }
@@ -1253,6 +1252,7 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
     if (data->topic && strcmp(data->topic, "voice") == 0) {
         if (data->payload.size > 2 && !(data->payload.bytes[0] == '{' && (data->payload.bytes[1] == '"' || data->payload.bytes[1] == '\''))) {
             s_is_user_speaking = true;
+            s_client_connected = true;
             s_last_speaker_play_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
             if (s_i2s_tx_handle) {
@@ -1262,11 +1262,9 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
                     if (stereo_buf) {
                         const int16_t *mono_ptr = (const int16_t *)data->payload.bytes;
                         for (size_t i = 0; i < mono_samples; i++) {
-                            int32_t boosted = (int32_t)mono_ptr[i] * 2;
-                            if (boosted > 32767) boosted = 32767;
-                            if (boosted < -32768) boosted = -32768;
-                            stereo_buf[i * 2]     = boosted << 16;
-                            stereo_buf[i * 2 + 1] = boosted << 16;
+                            int32_t sample = ((int32_t)mono_ptr[i]) << 16;
+                            stereo_buf[i * 2]     = sample;
+                            stereo_buf[i * 2 + 1] = sample;
                         }
                         size_t written = 0;
                         i2s_channel_write(s_i2s_tx_handle, stereo_buf, mono_samples * 2 * sizeof(int32_t), &written, pdMS_TO_TICKS(100));
@@ -1292,7 +1290,10 @@ static void on_data_received(const livekit_data_received_t *data, void *ctx) {
 
     cJSON *t = cJSON_GetObjectItem(json, "t");
     if (t && t->valuestring) {
-        if (strcmp(t->valuestring, "drive") == 0) {
+        s_client_connected = true; // Mark client active upon receiving any valid JSON command
+        if (strcmp(t->valuestring, "client_ready") == 0) {
+            ESP_LOGI(TAG, "📱 Mobile client connected & ready! Resuming worldwide video stream.");
+        } else if (strcmp(t->valuestring, "drive") == 0) {
             cJSON *x_item = cJSON_GetObjectItem(json, "x");
             cJSON *y_item = cJSON_GetObjectItem(json, "y");
             if (x_item && y_item) {
@@ -1453,12 +1454,12 @@ static void on_room_state_changed(livekit_connection_state_t state, void *ctx) {
 // Dedicated task for publishing camera frames worldwide over LiveKit WebRTC
 static void video_stream_task(void *pvParameters) {
     (void)pvParameters;
-    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (10 FPS smooth)");
+    ESP_LOGI(TAG, "🎥 Worldwide LiveKit WebRTC Video Stream Task started on Core 1 (~8 FPS smooth)");
     int consecutive_fails = 0;
     while (1) {
-        if (s_room_connected && s_room_handle) {
+        if (s_room_connected && s_room_handle && s_client_connected) {
             camera_fb_t *fb = NULL;
-            uint32_t delay_ms = 100;
+            uint32_t delay_ms = 125;
             if (s_camera_mutex && xSemaphoreTake(s_camera_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                 fb = esp_camera_fb_get();
                 if (fb) {
@@ -1479,16 +1480,17 @@ static void video_stream_task(void *pvParameters) {
                         livekit_err_t res = safe_livekit_publish(&pub_opts);
                         if (res != LIVEKIT_ERR_NONE) {
                             consecutive_fails++;
-                            // When remote peer disconnects or SCTP buffer is congested,
-                            // back off for 1.2s to allow the SCTP socket buffer to cleanly drain and reset!
+                            // When remote peer disconnects, pause video streaming until peer re-enters room
                             if (consecutive_fails > 3) {
-                                delay_ms = 1200;
+                                s_client_connected = false;
+                                consecutive_fails = 0;
+                                delay_ms = 400;
                             } else {
                                 delay_ms = 150;
                             }
                         } else {
                             consecutive_fails = 0;
-                            delay_ms = 100; // ~10 FPS for rock-solid stability and zero SCTP buffer congestion
+                            delay_ms = 125; // ~8 FPS for rock-solid stability and zero SCTP buffer congestion
                         }
                     } else {
                         delay_ms = 50;
@@ -1513,9 +1515,10 @@ static void audio_stream_task(void *pvParameters) {
     (void)pvParameters;
     ESP_LOGI(TAG, "🎙️ Worldwide LiveKit WebRTC Room Audio Task started on Core 0 (16kHz 16-bit PCM)");
 
-    // 40ms audio chunks (640 samples at 16kHz = 25 packets/sec, 1280 bytes mono)
-    const int chunk_samples = 640;
-    const size_t raw_stereo_bytes = chunk_samples * 2 * sizeof(int32_t); // 5120 bytes
+    // 80ms audio chunks (1280 samples at 16kHz = 12.5 packets/sec, 2560 bytes mono)
+    // Cutting packet frequency in half prevents SCTP queue congestion and ensures clean audio delivery
+    const int chunk_samples = 1280;
+    const size_t raw_stereo_bytes = chunk_samples * 2 * sizeof(int32_t); // 10240 bytes
     int32_t *raw_stereo = malloc(raw_stereo_bytes);
     int16_t *mono_out = malloc(chunk_samples * sizeof(int16_t));
 
