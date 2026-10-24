@@ -506,12 +506,6 @@ static esp_err_t init_i2s_audio(void) {
     // Play pleasant greeting chime so client verifies speaker hardware on boot
     play_robot_greeting_chime();
 
-    // Launch continuous background silence feeder to drive I2S master clocks (BCLK=41, WS=42)
-    xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 2, NULL, 0);
-
-    // Launch continuous microphone capture & diagnostic task on Core 0
-    xTaskCreatePinnedToCore(audio_stream_task, "lk_mic_task", 5120, NULL, 4, NULL, 0);
-
     return ESP_OK;
 }
 
@@ -1782,6 +1776,10 @@ void app_main(void) {
         ESP_LOGI(TAG, "Robot live! Connected to LiveKit Cloud WebRTC room!");
         // Launch worldwide camera streaming task on Core 1
         xTaskCreatePinnedToCore(video_stream_task, "lk_vid_task", 8192, NULL, 5, NULL, 1);
+        // Launch continuous background silence feeder to drive I2S master clocks (BCLK=41, WS=42)
+        xTaskCreatePinnedToCore(tx_keepalive_task, "i2s_tx_feeder", 3072, NULL, 2, NULL, 0);
+        // Launch continuous microphone capture & streaming task on Core 0
+        xTaskCreatePinnedToCore(audio_stream_task, "lk_mic_task", 5120, NULL, 4, NULL, 0);
     } else {
         ESP_LOGE(TAG, "Failed to create LiveKit room object, error: %d", lk_err);
     }
