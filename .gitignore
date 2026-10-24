@@ -39,3 +39,7 @@ Thumbs.db
 .agent/
 .claude/
 .gemini/
+
+# Raw / staging 3D models
+lumi_web/*.glb
+lumi_web/public/models/*vibrant*.glb

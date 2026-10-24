@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { PreorderLumiPreview } from '@/components/3d/preorder-lumi-preview';
 import { DEFAULT_PRICING, formatPrice } from '@/config/product';
 import { MockPaymentModal } from '@/components/ui/mock-payment-modal';
 import { createClient } from '@/lib/supabase/client';
@@ -378,7 +379,7 @@ export default function PreorderPage() {
             await supabase.auth.resend({
               type: 'signup',
               email: cleanEmail,
-            }).catch(() => {});
+            }).catch(() => { });
             setIsVerifyingOtp(true);
             setOtpEmail(cleanEmail);
             setOtpDigits(['', '', '', '', '', '']);
@@ -936,25 +937,22 @@ export default function PreorderPage() {
               <button
                 type="button"
                 onClick={() => currentStep !== 3 && setCurrentStep(1)}
-                className={`flex items-center gap-2.5 text-left bg-transparent border-none p-0 ${
-                  currentStep !== 3 ? 'cursor-pointer' : 'cursor-default'
-                }`}
+                className={`flex items-center gap-2.5 text-left bg-transparent border-none p-0 ${currentStep !== 3 ? 'cursor-pointer' : 'cursor-default'
+                  }`}
               >
                 <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors ${
-                    currentStep === 1
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors ${currentStep === 1
                       ? 'bg-[#6D4AE0] text-white'
                       : currentStep > 1
-                      ? 'bg-[#12805C] text-white'
-                      : 'bg-[#E7E4F0] text-muted'
-                  }`}
+                        ? 'bg-[#12805C] text-white'
+                        : 'bg-[#E7E4F0] text-muted'
+                    }`}
                 >
                   {currentStep > 1 ? <IconCheck size={14} /> : '1'}
                 </span>
                 <span
-                  className={`text-[14px] leading-[20px] font-medium hidden sm:inline ${
-                    currentStep === 1 ? 'text-ink font-semibold' : 'text-muted'
-                  }`}
+                  className={`text-[14px] leading-[20px] font-medium hidden sm:inline ${currentStep === 1 ? 'text-ink font-semibold' : 'text-muted'
+                    }`}
                 >
                   Account
                 </span>
@@ -967,25 +965,22 @@ export default function PreorderPage() {
               <button
                 type="button"
                 onClick={() => isAuthenticated && currentStep !== 3 && setCurrentStep(2)}
-                className={`flex items-center gap-2.5 text-left bg-transparent border-none p-0 ${
-                  isAuthenticated && currentStep !== 3 ? 'cursor-pointer' : 'cursor-default'
-                }`}
+                className={`flex items-center gap-2.5 text-left bg-transparent border-none p-0 ${isAuthenticated && currentStep !== 3 ? 'cursor-pointer' : 'cursor-default'
+                  }`}
               >
                 <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors ${
-                    currentStep === 2
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors ${currentStep === 2
                       ? 'bg-[#6D4AE0] text-white'
                       : currentStep > 2
-                      ? 'bg-[#12805C] text-white'
-                      : 'bg-[#E7E4F0] text-muted'
-                  }`}
+                        ? 'bg-[#12805C] text-white'
+                        : 'bg-[#E7E4F0] text-muted'
+                    }`}
                 >
                   {currentStep > 2 ? <IconCheck size={14} /> : '2'}
                 </span>
                 <span
-                  className={`text-[14px] leading-[20px] font-medium hidden sm:inline ${
-                    currentStep === 2 ? 'text-ink font-semibold' : 'text-muted'
-                  }`}
+                  className={`text-[14px] leading-[20px] font-medium hidden sm:inline ${currentStep === 2 ? 'text-ink font-semibold' : 'text-muted'
+                    }`}
                 >
                   Delivery and payment
                 </span>
@@ -997,16 +992,14 @@ export default function PreorderPage() {
             <li className="flex items-center gap-2.5">
               <div className="flex items-center gap-2.5">
                 <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors ${
-                    currentStep === 3 ? 'bg-[#6D4AE0] text-white' : 'bg-[#E7E4F0] text-muted'
-                  }`}
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors ${currentStep === 3 ? 'bg-[#6D4AE0] text-white' : 'bg-[#E7E4F0] text-muted'
+                    }`}
                 >
                   3
                 </span>
                 <span
-                  className={`text-[14px] leading-[20px] font-medium hidden sm:inline ${
-                    currentStep === 3 ? 'text-ink font-semibold' : 'text-muted'
-                  }`}
+                  className={`text-[14px] leading-[20px] font-medium hidden sm:inline ${currentStep === 3 ? 'text-ink font-semibold' : 'text-muted'
+                    }`}
                 >
                   Confirmation
                 </span>
@@ -1051,14 +1044,8 @@ export default function PreorderPage() {
           {isSummaryExpanded && (
             <div className="p-4 pt-0 border-t border-[#E7E4F0] space-y-4">
               <div className="flex items-center gap-3 pt-4">
-                <div className="w-16 h-12 relative rounded-md overflow-hidden bg-[#F7F6FB] shrink-0">
-                  <Image
-                    src="/lumi_product_tile.png"
-                    alt="LUMI telepresence robot"
-                    fill
-                    sizes="64px"
-                    className="object-contain"
-                  />
+                <div className="w-16 h-12 relative rounded-md overflow-hidden bg-[#F7F6FB] shrink-0 border border-[#E7E4F0]/60">
+                  <PreorderLumiPreview />
                 </div>
                 <div>
                   <h3 className="text-[16px] leading-[24px] font-semibold text-ink">LUMI telepresence robot</h3>
@@ -1168,11 +1155,10 @@ export default function PreorderPage() {
                             onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
                             onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                             onPaste={idx === 0 ? handleOtpPaste : undefined}
-                            className={`w-11 h-14 sm:w-12 sm:h-14 text-center font-mono text-2xl font-bold rounded-[6px] border outline-none transition-all ${
-                              digit
+                            className={`w-11 h-14 sm:w-12 sm:h-14 text-center font-mono text-2xl font-bold rounded-[6px] border outline-none transition-all ${digit
                                 ? 'border-[#6D4AE0] bg-white text-ink shadow-xs'
                                 : 'border-[#E7E4F0] bg-[#F7F6FB] text-ink'
-                            } focus:border-[#6D4AE0] focus:bg-white focus:ring-1 focus:ring-[#6D4AE0]`}
+                              } focus:border-[#6D4AE0] focus:bg-white focus:ring-1 focus:ring-[#6D4AE0]`}
                             disabled={isSubmittingOtp}
                             aria-label={`Digit ${idx + 1} of verification code`}
                           />
@@ -1273,11 +1259,10 @@ export default function PreorderPage() {
                           setAuthMode('signup');
                           setLoginError('');
                         }}
-                        className={`h-10 text-[14px] leading-[20px] font-semibold rounded-[4px] transition-all cursor-pointer border-none flex items-center justify-center ${
-                          authMode === 'signup'
+                        className={`h-10 text-[14px] leading-[20px] font-semibold rounded-[4px] transition-all cursor-pointer border-none flex items-center justify-center ${authMode === 'signup'
                             ? 'bg-white text-ink shadow-xs border border-[#E7E4F0]'
                             : 'text-muted hover:text-ink bg-transparent'
-                        }`}
+                          }`}
                       >
                         Create account
                       </button>
@@ -1287,11 +1272,10 @@ export default function PreorderPage() {
                           setAuthMode('signin');
                           setLoginError('');
                         }}
-                        className={`h-10 text-[14px] leading-[20px] font-semibold rounded-[4px] transition-all cursor-pointer border-none flex items-center justify-center ${
-                          authMode === 'signin'
+                        className={`h-10 text-[14px] leading-[20px] font-semibold rounded-[4px] transition-all cursor-pointer border-none flex items-center justify-center ${authMode === 'signin'
                             ? 'bg-white text-ink shadow-xs border border-[#E7E4F0]'
                             : 'text-muted hover:text-ink bg-transparent'
-                        }`}
+                          }`}
                       >
                         Sign in
                       </button>
@@ -1569,11 +1553,10 @@ export default function PreorderPage() {
                           setFieldErrors(updated);
                         }
                       }}
-                      className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${
-                        fieldErrors.fullName
+                      className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${fieldErrors.fullName
                           ? 'border-[#B42318] focus:ring-1 focus:ring-[#B42318]'
                           : 'border-[#E7E4F0] focus:border-[#6D4AE0] focus:ring-1 focus:ring-[#6D4AE0]'
-                      }`}
+                        }`}
                     />
                     {fieldErrors.fullName && (
                       <p className="text-xs text-[#B42318] mt-1.5">{fieldErrors.fullName}</p>
@@ -1587,11 +1570,10 @@ export default function PreorderPage() {
                         Phone number *
                       </label>
                       <div
-                        className={`flex items-center h-12 border rounded-[6px] overflow-hidden bg-white ${
-                          fieldErrors.phone
+                        className={`flex items-center h-12 border rounded-[6px] overflow-hidden bg-white ${fieldErrors.phone
                             ? 'border-[#B42318]'
                             : 'border-[#E7E4F0] focus-within:border-[#6D4AE0] focus-within:ring-1 focus-within:ring-[#6D4AE0]'
-                        }`}
+                          }`}
                       >
                         <span className="h-full px-3.5 bg-[#F7F6FB] border-r border-[#E7E4F0] text-sm text-ink/70 font-medium flex items-center select-none shrink-0">
                           +91
@@ -1656,11 +1638,10 @@ export default function PreorderPage() {
                           setFieldErrors(updated);
                         }
                       }}
-                      className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${
-                        fieldErrors.addressLine1
+                      className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${fieldErrors.addressLine1
                           ? 'border-[#B42318] focus:ring-1 focus:ring-[#B42318]'
                           : 'border-[#E7E4F0] focus:border-[#6D4AE0] focus:ring-1 focus:ring-[#6D4AE0]'
-                      }`}
+                        }`}
                     />
                     {fieldErrors.addressLine1 && (
                       <p className="text-xs text-[#B42318] mt-1.5">{fieldErrors.addressLine1}</p>
@@ -1704,11 +1685,10 @@ export default function PreorderPage() {
                             setFieldErrors(updated);
                           }
                         }}
-                        className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${
-                          fieldErrors.city
+                        className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${fieldErrors.city
                             ? 'border-[#B42318] focus:ring-1 focus:ring-[#B42318]'
                             : 'border-[#E7E4F0] focus:border-[#6D4AE0] focus:ring-1 focus:ring-[#6D4AE0]'
-                        }`}
+                          }`}
                       />
                       {fieldErrors.city && (
                         <p className="text-xs text-[#B42318] mt-1.5">{fieldErrors.city}</p>
@@ -1731,11 +1711,10 @@ export default function PreorderPage() {
                             setFieldErrors(updated);
                           }
                         }}
-                        className={`w-full h-12 px-3 text-base border rounded-[6px] outline-none bg-white transition-colors cursor-pointer ${
-                          fieldErrors.state
+                        className={`w-full h-12 px-3 text-base border rounded-[6px] outline-none bg-white transition-colors cursor-pointer ${fieldErrors.state
                             ? 'border-[#B42318] focus:ring-1 focus:ring-[#B42318]'
                             : 'border-[#E7E4F0] focus:border-[#6D4AE0] focus:ring-1 focus:ring-[#6D4AE0]'
-                        }`}
+                          }`}
                       >
                         <option value="">Select state</option>
                         {INDIAN_STATES.map((st) => (
@@ -1774,11 +1753,10 @@ export default function PreorderPage() {
                             setFieldErrors(updated);
                           }
                         }}
-                        className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${
-                          fieldErrors.postalCode
+                        className={`w-full h-12 px-3.5 text-base border rounded-[6px] outline-none transition-colors ${fieldErrors.postalCode
                             ? 'border-[#B42318] focus:ring-1 focus:ring-[#B42318]'
                             : 'border-[#E7E4F0] focus:border-[#6D4AE0] focus:ring-1 focus:ring-[#6D4AE0]'
-                        }`}
+                          }`}
                       />
                       {fieldErrors.postalCode && (
                         <p className="text-xs text-[#B42318] mt-1.5">{fieldErrors.postalCode}</p>
@@ -1942,16 +1920,9 @@ export default function PreorderPage() {
           {/* Right Column (5 cols): Order Summary Card (Sticky on desktop) */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-24">
             <div className="bg-white border border-[#E7E4F0] rounded-lg p-6 sm:p-8">
-              {/* Product Tile */}
+              {/* Product Tile (Interactive 3D model with animated glowing eyes) */}
               <div className="w-full aspect-[4/3] relative rounded-md overflow-hidden bg-[#F7F6FB] mb-5 border border-[#E7E4F0]/60">
-                <Image
-                  src="/lumi_product_tile.png"
-                  alt="LUMI telepresence robot"
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 420px"
-                  className="object-contain p-2"
-                  priority
-                />
+                <PreorderLumiPreview />
               </div>
 
               {/* Title & Description */}

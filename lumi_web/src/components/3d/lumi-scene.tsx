@@ -18,12 +18,43 @@ import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { PerformanceMonitor, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { LumiGLBModel, type LumiSceneAnimationData } from './lumi-custom-model';
 import { type LumiMood } from './eye-engine';
 import { scrollStore } from '@/components/providers/smooth-scroll';
 
 // Eagerly preload GLTF model to prevent render latency
 useGLTF.preload('/models/lumi.glb');
+
+/**
+ * ─── 3D Lighting & Shadows Configuration ──────────────────────────────
+ * Easily tweakable studio lighting parameters for premium product rendering
+ */
+export const LIGHTING_CONFIG = {
+  // 1. Renderer Tone Mapping & Exposure
+  toneMappingExposure: 1.0, // Clean neutral exposure: preserves true albedo saturation and prevents blowout
+
+  // 2. Studio Environment Lighting
+  envIntensity: 0.18, // Soft studio sheen on porcelain curves without washing out base colors
+
+  // 3. Key Light (Upper front-left directional light)
+  keyLightIntensity: 0.95, // Gentle key light shaping contours and depth
+  keyLightColor: '#FFFFFF',
+  keyLightPos: [-2.5, 4.0, 3.5] as [number, number, number],
+
+  // 4. Rim Light (Purple-tinted from behind-left for silhouette separation)
+  rimLightIntensity: 0.65, // Elegant separation from background
+  rimLightColor: '#8B7CF6', // Purple-tinted (#8b7cf6)
+  rimLightPos: [-3.5, 3.2, -3.2] as [number, number, number],
+
+  // 5. Fill Light (Hemisphere light: white sky, soft lavender ground)
+  fillLightIntensity: 0.4, // Keeps shadow side clean and warm
+  fillSkyColor: '#FFFFFF',
+  fillGroundColor: '#EBE7F5', // Soft lavender ground reflection
+
+  // 6. Contact Shadows
+  contactShadowOpacity: 0.48, // Wheel contact ambient occlusion
+};
 
 export interface LumiSceneProps {
   activeChapter?: number;
@@ -74,9 +105,9 @@ function smootherstep(x: number): number {
 // Desktop (768px+ & landscape <500px): alternating 12-column stage choreography
 const DESKTOP_KEYFRAMES: Record<number, ChapterKeyframe> = {
   1: {
-    x: 0.75, y: 0.0, z: 0,
+    x: 0.72, y: 0.34, z: 0,
     yaw: 0, pitch: 0, roll: 0,
-    scale: 1.15,
+    scale: 1.08,
     headTiltX: 0, headTurnY: 0,
     soundRingsOpacity: 0, dottedTrailOpacity: 0, floorGlowOpacity: 0,
     bgDarkIntensity: 0, lightIntensity: 1.0,
@@ -205,6 +236,34 @@ const CHAPTER_DEFAULT_MOODS: Record<number, LumiMood> = {
   9: 'love',
 };
 
+// ─── Studio Environment Component ─────────────────────────────────────
+
+function StudioEnvironment({ intensity = 0.9 }: { intensity?: number }) {
+  const { gl, scene } = useThree();
+
+  useEffect(() => {
+    const pmremGenerator = new THREE.PMREMGenerator(gl);
+    pmremGenerator.compileEquirectangularShader();
+    const roomEnv = new RoomEnvironment();
+    const envTexture = pmremGenerator.fromScene(roomEnv, 0.04).texture;
+    scene.environment = envTexture;
+    scene.environmentIntensity = intensity;
+
+    return () => {
+      scene.environment = null;
+      envTexture.dispose();
+      pmremGenerator.dispose();
+      roomEnv.dispose?.();
+    };
+  }, [gl, scene, intensity]);
+
+  useEffect(() => {
+    scene.environmentIntensity = intensity;
+  }, [scene, intensity]);
+
+  return null;
+}
+
 // ─── Hero Floor Stage Disc & Ellipse Ring ─────────────────────────────
 
 function HeroFloorRing({
@@ -263,23 +322,23 @@ function LumiGroundShadow({
   return (
     <group ref={shadowGroupRef} position={[0, -0.772, 0]}>
       {/* 1. Left Wheel Contact Shadow */}
-      <mesh ref={wheelShadowLRef} position={[-0.26, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1, 1.4, 1]}>
+      <mesh ref={wheelShadowLRef} position={[-0.31, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1, 1.3, 1]}>
         <planeGeometry args={[0.22, 0.28]} />
         <meshBasicMaterial
           map={wheelShadowTexture}
           transparent
-          opacity={0.65}
+          opacity={LIGHTING_CONFIG.contactShadowOpacity}
           depthWrite={false}
         />
       </mesh>
 
       {/* 2. Right Wheel Contact Shadow */}
-      <mesh ref={wheelShadowRRef} position={[0.26, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1, 1.4, 1]}>
+      <mesh ref={wheelShadowRRef} position={[0.31, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1, 1.3, 1]}>
         <planeGeometry args={[0.22, 0.28]} />
         <meshBasicMaterial
           map={wheelShadowTexture}
           transparent
-          opacity={0.65}
+          opacity={LIGHTING_CONFIG.contactShadowOpacity}
           depthWrite={false}
         />
       </mesh>
@@ -290,7 +349,7 @@ function LumiGroundShadow({
         <meshBasicMaterial
           map={bodyShadowTexture}
           transparent
-          opacity={0.52}
+          opacity={LIGHTING_CONFIG.contactShadowOpacity * 0.7}
           depthWrite={false}
         />
       </mesh>
@@ -1471,10 +1530,13 @@ function LumiSceneContent({
       }
     }
 
-    // Dissolve hero stage disc
+    // Dissolve and position hero stage disc
     const heroDiscOpacity = Math.max(0, Math.min(1, 1 - (floatChapter - 1.0) / 0.7)) * footerFade;
     if (heroDiscRef.current) {
       heroDiscRef.current.visible = heroDiscOpacity > 0.005;
+      const discYOffset = -0.768 * finalScale;
+      heroDiscRef.current.position.set(finalPosX, finalPosY + discYOffset, finalPosZ);
+      heroDiscRef.current.scale.set(finalScale, finalScale, finalScale);
       heroDiscRef.current.children.forEach((child, idx) => {
         const mesh = child as THREE.Mesh;
         if (mesh && mesh.material) {
@@ -1594,6 +1656,10 @@ function LumiSceneContent({
     state.gl.autoClear = true;
     state.gl.setScissorTest(false);
     state.gl.setViewport(0, 0, state.size.width, state.size.height);
+    state.gl.toneMapping = THREE.ACESFilmicToneMapping;
+    state.gl.toneMappingExposure = LIGHTING_CONFIG.toneMappingExposure;
+    state.gl.shadowMap.enabled = true;
+    state.gl.shadowMap.type = THREE.PCFShadowMap;
     if ('aspect' in state.camera) {
       (state.camera as THREE.PerspectiveCamera).aspect = state.size.width / state.size.height;
       state.camera.updateProjectionMatrix();
@@ -1603,20 +1669,35 @@ function LumiSceneContent({
 
   return (
     <>
-      {/* Lighting with cross-fade */}
-      <ambientLight ref={ambientLightRef} intensity={0.9} />
+      {/* 1. Studio Environment Sheen (Soft HDRI reflections on cream shell and pastel wheels) */}
+      <StudioEnvironment intensity={LIGHTING_CONFIG.envIntensity} />
+
+      {/* 2. Key Light: Directional light from upper front-left */}
       <directionalLight
-        ref={directionalLightRef}
-        position={[5, 8, 5]}
-        intensity={1.1}
+        position={LIGHTING_CONFIG.keyLightPos}
+        intensity={LIGHTING_CONFIG.keyLightIntensity}
+        color={LIGHTING_CONFIG.keyLightColor}
       />
-      <directionalLight position={[-4, 5, -2]} intensity={0.4} />
+
+      {/* 3. Rim Light: Purple-tinted (#8B7CF6) from behind-left to carve out helmet and wheels */}
+      <directionalLight
+        position={LIGHTING_CONFIG.rimLightPos}
+        intensity={LIGHTING_CONFIG.rimLightIntensity}
+        color={LIGHTING_CONFIG.rimLightColor}
+      />
+
+      {/* 4. Fill Light: Hemisphere light with white sky and soft lavender ground reflection */}
+      <hemisphereLight
+        intensity={LIGHTING_CONFIG.fillLightIntensity}
+        color={LIGHTING_CONFIG.fillSkyColor}
+        groundColor={LIGHTING_CONFIG.fillGroundColor}
+      />
 
       {/* Hero Flat Stage Disc & Ellipse */}
       <HeroFloorRing
         groupRef={heroDiscRef}
-        centerX={isMobile ? 0 : isTablet ? 0 : 0.75}
-        centerY={isMobile ? -0.72 : isTablet ? (0.38 - 0.772 * 0.58) : -0.772}
+        centerX={isMobile ? 0 : isTablet ? 0 : 0.72}
+        centerY={isMobile ? -0.72 : isTablet ? (0.38 - 0.772 * 0.58) : -0.75}
         scale={isMobile ? 0.46 : isTablet ? 0.58 : 1.0}
       />
 
@@ -1633,7 +1714,7 @@ function LumiSceneContent({
       {/* LUMI Model Group */}
       <group
         ref={modelGroupRef}
-        position={[isMobile ? 0 : 0.75, 0, 0]}
+        position={[isMobile ? 0 : 0.72, 0, 0]}
         onClick={handleLumiClick}
         onPointerOver={() => { isHoveringLumiRef.current = true; }}
         onPointerOut={() => { isHoveringLumiRef.current = false; }}
@@ -1644,8 +1725,6 @@ function LumiSceneContent({
           fadeOpacity={1.0}
         />
       </group>
-
-      <hemisphereLight intensity={0.4} groundColor="#E4E1EE" color="#FFFFFF" />
     </>
   );
 }
@@ -1690,14 +1769,22 @@ export function LumiScene({
       style={{ touchAction: 'pan-y' }}
     >
       <Canvas
+        shadows="soft"
         camera={{ position: [0, 0, 3.2], fov: 35 }}
         gl={{
           antialias: true,
           alpha: true,
           powerPreference: 'high-performance',
           toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: LIGHTING_CONFIG.toneMappingExposure,
         }}
-        dpr={Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 1.5)}
+        dpr={Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)}
+        onCreated={({ gl }) => {
+          gl.shadowMap.enabled = true;
+          gl.shadowMap.type = THREE.PCFShadowMap;
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = LIGHTING_CONFIG.toneMappingExposure;
+        }}
       >
         <PerformanceMonitor
           onDecline={() => setDpr(1.0)}

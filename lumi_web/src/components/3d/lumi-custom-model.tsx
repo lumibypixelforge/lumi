@@ -91,15 +91,15 @@ function VoiceSoundRings({ opacity = 0 }: { opacity: number }) {
     <group position={[0, 0.48, 0.38]} visible={opacity > 0.005}>
       <mesh ref={ring1}>
         <ringGeometry args={[0.22, 0.235, 48]} />
-        <meshBasicMaterial color="#5FF3FF" transparent opacity={0.4 * opacity} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#5FF3FF" transparent opacity={0.4 * opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <mesh ref={ring2}>
         <ringGeometry args={[0.22, 0.235, 48]} />
-        <meshBasicMaterial color="#5FF3FF" transparent opacity={0.4 * opacity} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#5FF3FF" transparent opacity={0.4 * opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <mesh ref={ring3}>
         <ringGeometry args={[0.22, 0.235, 48]} />
-        <meshBasicMaterial color="#5FF3FF" transparent opacity={0.4 * opacity} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#5FF3FF" transparent opacity={0.4 * opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -119,7 +119,7 @@ function MobilityDottedTrail({ opacity = 0, length = 1 }: { opacity: number; len
   }, []);
 
   return (
-    <group position={[0, 0.005, 0]} visible={opacity > 0.005}>
+    <group position={[0, -0.221, 0]} visible={opacity > 0.005}>
       {dots.map(([x, z], i) => {
         const isLengthVisible = i < length * 16;
         if (!isLengthVisible) return null;
@@ -130,6 +130,7 @@ function MobilityDottedTrail({ opacity = 0, length = 1 }: { opacity: number; len
               color="#6D4AE0"
               transparent
               opacity={Math.max(0, (0.65 - i * 0.035) * opacity)}
+              depthWrite={false}
             />
           </mesh>
         );
@@ -151,7 +152,7 @@ function PowerFloorGlow({ opacity = 0 }: { opacity: number }) {
   });
 
   return (
-    <group position={[0, 0.006, 0]} visible={opacity > 0.005}>
+    <group position={[0, -0.221, 0]} visible={opacity > 0.005}>
       <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.36, 0.38, 64]} />
         <meshBasicMaterial
@@ -159,6 +160,7 @@ function PowerFloorGlow({ opacity = 0 }: { opacity: number }) {
           transparent
           opacity={0.15 * opacity}
           side={THREE.DoubleSide}
+          depthWrite={false}
         />
       </mesh>
     </group>
@@ -246,7 +248,43 @@ export function LumiGLBModel({
     tex.needsUpdate = true;
     screenTextureRef.current = tex;
 
-    // Traverse modelScene to cache nodes and apply anti-glare specs
+    // Auto-scale to match LUMI's target height (0.88m) if model scale is small (e.g. 0.1m)
+    const bbox = new THREE.Box3().setFromObject(modelScene);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+
+    if (size.y < 0.5) {
+      const scaleFactor = 0.882 / size.y;
+      modelScene.scale.set(scaleFactor, scaleFactor, scaleFactor);
+      modelScene.updateMatrixWorld(true);
+    }
+
+    // Align model so wheels contact the stage floor (-0.222) and center X/Z at 0
+    const finalBbox = new THREE.Box3().setFromObject(modelScene);
+    const finalCenter = new THREE.Vector3();
+    finalBbox.getCenter(finalCenter);
+
+    const wheelL = modelScene.getObjectByName('wheel_L');
+    const wheelR = modelScene.getObjectByName('wheel_R');
+    let wheelAxleZ = finalCenter.z;
+    let wheelBottomY = finalBbox.min.y;
+
+    if (wheelL && wheelR) {
+      const bL = new THREE.Box3().setFromObject(wheelL);
+      const bR = new THREE.Box3().setFromObject(wheelR);
+      const wheelCenter = new THREE.Vector3();
+      bL.clone().union(bR).getCenter(wheelCenter);
+      wheelAxleZ = wheelCenter.z;
+      wheelBottomY = Math.min(bL.min.y, bR.min.y);
+    }
+
+    modelScene.position.x = -finalCenter.x;
+    modelScene.position.z = -wheelAxleZ;
+    modelScene.position.y = -0.222 - wheelBottomY;
+
+    const mats: THREE.Material[] = [];
+
+    // Traverse modelScene to cache nodes and apply materials
     modelScene.traverse((child) => {
       const name = child.name;
 
@@ -255,21 +293,45 @@ export function LumiGLBModel({
       if (name === 'wheel_R') nodesRef.current.wheelR = child;
       if (name === 'body') nodesRef.current.body = child;
 
-      if (name === 'screen' && child instanceof THREE.Mesh) {
-        nodesRef.current.screen = child;
-        const mat = child.material.clone() as THREE.MeshPhysicalMaterial;
+      if (child instanceof THREE.Mesh) {
+        if (name === 'screen') {
+          nodesRef.current.screen = child;
 
-        // Anti-glare specifications:
-        mat.roughness = 0.35;
-        mat.clearcoat = 0;
-        mat.metalness = 0.0;
-        mat.envMapIntensity = 0.0; // ZERO environment reflection on screen glass
-        mat.emissive = new THREE.Color(0xffffff);
-        mat.emissiveMap = tex;
-        mat.emissiveIntensity = 1.6;
-        child.material = mat;
+          // Anti-glare deep OLED black screen glass
+          const mat = new THREE.MeshPhysicalMaterial({
+            color: new THREE.Color(0x020202), // Pitch-black glossy OLED glass
+            roughness: 0.12,
+            clearcoat: 0.9,
+            clearcoatRoughness: 0.08,
+            metalness: 0.05,
+            envMapIntensity: 0.12,
+            emissive: new THREE.Color(0xffffff),
+            emissiveMap: tex,
+            emissiveIntensity: 2.3, // Glowing neon eyes
+            transparent: true,
+          });
+          child.material = mat;
+          mats.push(mat);
+        } else {
+          // Body, head, wheels: ensure standard PBR materials with transparency for fade
+          if (Array.isArray(child.material)) {
+            child.material = child.material.map((m) => {
+              const cloned = m.clone();
+              cloned.transparent = true;
+              mats.push(cloned);
+              return cloned;
+            });
+          } else if (child.material) {
+            const cloned = child.material.clone();
+            cloned.transparent = true;
+            mats.push(cloned);
+            child.material = cloned;
+          }
+        }
       }
     });
+
+    materialsRef.current = mats;
   }, [modelScene]);
 
   // Handle prop mood changes fallback
@@ -320,18 +382,6 @@ export function LumiGLBModel({
 
   // Cache and clone all materials so opacity fading works seamlessly before footer
   const materialsRef = useRef<THREE.Material[]>([]);
-
-  useEffect(() => {
-    const mats: THREE.Material[] = [];
-    modelScene.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.material = child.material.clone();
-        child.material.transparent = true;
-        mats.push(child.material);
-      }
-    });
-    materialsRef.current = mats;
-  }, [modelScene]);
 
   useEffect(() => {
     materialsRef.current.forEach((mat) => {
