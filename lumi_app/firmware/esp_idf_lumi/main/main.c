@@ -536,7 +536,7 @@ static esp_err_t init_camera(void) {
         .ledc_channel = LEDC_CHANNEL_7,
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_QVGA, // 320x240 for smooth, ultra-low latency worldwide streaming
-        .jpeg_quality = 24, // Optimized for smooth streaming without choking 2.4GHz Wi-Fi or SCTP buffers (~7-9KB/frame)
+        .jpeg_quality = 28, // Optimized for smooth streaming without choking 2.4GHz Wi-Fi or SCTP buffers (~4-6KB/frame)
         .fb_count = 2,
         .grab_mode = CAMERA_GRAB_LATEST,
         .fb_location = CAMERA_FB_IN_PSRAM
@@ -1458,6 +1458,7 @@ static void video_stream_task(void *pvParameters) {
     while (1) {
         if (s_room_connected && s_room_handle) {
             camera_fb_t *fb = NULL;
+            uint32_t delay_ms = 100;
             if (s_camera_mutex && xSemaphoreTake(s_camera_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                 fb = esp_camera_fb_get();
                 if (fb) {
@@ -1478,22 +1479,29 @@ static void video_stream_task(void *pvParameters) {
                         livekit_err_t res = safe_livekit_publish(&pub_opts);
                         if (res != LIVEKIT_ERR_NONE) {
                             consecutive_fails++;
-                            // If data channel is congested (e.g. phone disconnected or reconnecting),
-                            // back off progressively to allow the SCTP socket buffer to flush and recover cleanly!
+                            // When remote peer disconnects or SCTP buffer is congested,
+                            // back off for 1.2s to allow the SCTP socket buffer to cleanly drain and reset!
                             if (consecutive_fails > 3) {
-                                vTaskDelay(pdMS_TO_TICKS(350));
+                                delay_ms = 1200;
                             } else {
-                                vTaskDelay(pdMS_TO_TICKS(120));
+                                delay_ms = 150;
                             }
                         } else {
                             consecutive_fails = 0;
+                            delay_ms = 100; // ~10 FPS for rock-solid stability and zero SCTP buffer congestion
                         }
+                    } else {
+                        delay_ms = 50;
                     }
                     esp_camera_fb_return(fb);
+                } else {
+                    delay_ms = 100;
                 }
                 xSemaphoreGive(s_camera_mutex);
+            } else {
+                delay_ms = 50;
             }
-            vTaskDelay(pdMS_TO_TICKS(100)); // ~10 FPS for rock-solid stability and zero SCTP buffer congestion
+            vTaskDelay(pdMS_TO_TICKS(delay_ms));
         } else {
             vTaskDelay(pdMS_TO_TICKS(150));
         }
@@ -1555,8 +1563,8 @@ static void audio_stream_task(void *pvParameters) {
             int64_t energy_r = 0;
             int64_t sum_squares = 0;
             for (int i = 0; i < samples; i++) {
-                int32_t l = raw_stereo[i * 2] >> 14;
-                int32_t r = raw_stereo[i * 2 + 1] >> 14;
+                int32_t l = raw_stereo[i * 2] >> 16;
+                int32_t r = raw_stereo[i * 2 + 1] >> 16;
                 energy_l += (int64_t)l * l;
                 energy_r += (int64_t)r * r;
             }
@@ -1567,8 +1575,8 @@ static void audio_stream_task(void *pvParameters) {
                 int32_t sample_32 = use_left ? raw_stereo[i * 2] : raw_stereo[i * 2 + 1];
 
                 // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot (bits 31..8).
-                // Shift >> 14 provides clean +12dB digital gain boost for room pickup without clipping.
-                int32_t sample_16 = sample_32 >> 14;
+                // Shift >> 16 performs true 24-bit to 16-bit MSB conversion with zero digital clipping.
+                int32_t sample_16 = sample_32 >> 16;
                 if (sample_16 > 32767) sample_16 = 32767;
                 if (sample_16 < -32768) sample_16 = -32768;
                 mono_out[i] = (int16_t)sample_16;
