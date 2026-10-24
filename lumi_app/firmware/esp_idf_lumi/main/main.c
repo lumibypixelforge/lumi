@@ -1571,18 +1571,30 @@ static void audio_stream_task(void *pvParameters) {
             }
             bool use_left = (energy_l >= energy_r);
 
+            // First-order DC-blocking IIR high-pass filter (~120 Hz cutoff at 16 kHz):
+            // Eliminates INMP441 hardware DC-offset (-800 to -1100 LSBs) and sub-audible rumble.
+            // R = 1 - (2 * pi * fc / fs) = 1 - (2 * 3.14159 * 120 / 16000) ~= 0.953
+            static float s_dc_x = 0.0f;
+            static float s_dc_y = 0.0f;
+
             int32_t peak = 0;
             for (int i = 0; i < samples; i++) {
                 int32_t sample_32 = use_left ? raw_stereo[i * 2] : raw_stereo[i * 2 + 1];
 
                 // INMP441 outputs 24-bit MSB-aligned data in 32-bit slot (bits 31..8).
-                // Shift >> 16 performs true 24-bit to 16-bit MSB conversion.
                 int32_t sample_16 = sample_32 >> 16;
 
+                // Apply DC-blocker / 120 Hz high-pass filter: removes mud, centers speech at zero
+                float x = (float)sample_16;
+                float y = x - s_dc_x + 0.953f * s_dc_y;
+                s_dc_x = x;
+                s_dc_y = y;
+
+                int32_t ac_sample = (int32_t)y;
+
                 // Software AGC & Soft-Knee Limiter (+10.8dB clean gain):
-                // Normal room speech reaches ~1,200; boosting by 3.5x brings it to ~4,500-6,000 (-14dBFS)
-                // for loud, crystal-clear projection on phone speakers with zero clipping!
-                int32_t boosted = (sample_16 * 7) / 2;
+                // Clean speech is centered at 0 with no DC bias, bringing out crystal-clear consonants
+                int32_t boosted = (ac_sample * 7) / 2;
                 if (boosted > 28000) {
                     boosted = 28000 + (boosted - 28000) / 4;
                 } else if (boosted < -28000) {
@@ -1592,7 +1604,7 @@ static void audio_stream_task(void *pvParameters) {
                 if (boosted < -32768) boosted = -32768;
                 mono_out[i] = (int16_t)boosted;
 
-                int32_t abs_s = labs(sample_16);
+                int32_t abs_s = labs(ac_sample);
                 if (abs_s > peak) peak = abs_s;
                 sum_squares += (int64_t)boosted * boosted;
             }
@@ -1609,10 +1621,10 @@ static void audio_stream_task(void *pvParameters) {
 
             // Stream to LiveKit WebRTC if room is connected and client toggled Listening ON
             if (s_room_connected && s_room_handle && s_is_audio_listening && !s_is_user_speaking) {
-                // Calibrated VAD Silence Suppression:
-                // INMP441 noise floor is ~600-800. Peak > 950 indicates active voice/speech.
+                // Calibrated VAD Silence Suppression (DC-offset eliminated):
+                // Background room silence peak is ~50-180. Peak > 350 indicates active voice/speech.
                 // When speaking, stream continuously. When quiet, throttle to 1 keepalive/sec to preserve SCTP pipe for HVGA video!
-                if (peak > 950) {
+                if (peak > 350) {
                     silent_packet_count = 0;
                 } else {
                     silent_packet_count++;

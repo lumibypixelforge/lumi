@@ -500,8 +500,8 @@ export default function DriveScreen() {
           pendingChunks.push(pcmBytes);
           pendingLength += pcmBytes.length;
 
-          // If audio is currently playing, buffer up to 160ms block for seamless continuous playback
-          if (pendingLength < TARGET_BATCH_BYTES && isPlaying) {
+          // Always accumulate a full 160ms block before dispatching to Android audio player
+          if (pendingLength < TARGET_BATCH_BYTES) {
             return;
           }
 
